@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Kanban Task Manager</title>
+<link rel="stylesheet" href="../node_modules/@fontsource/inter/latin-400.css">
+<link rel="stylesheet" href="../node_modules/@fontsource/inter/latin-500.css">
+<link rel="stylesheet" href="../node_modules/@fontsource/inter/latin-600.css">
+<link rel="stylesheet" href="../node_modules/@fontsource/inter/latin-700.css">
+<link rel="stylesheet" href="../node_modules/@fontsource/inter/cyrillic-400.css">
+<link rel="stylesheet" href="../node_modules/@fontsource/inter/cyrillic-500.css">
+<link rel="stylesheet" href="../node_modules/@fontsource/inter/cyrillic-600.css">
+<link rel="stylesheet" href="../node_modules/@fontsource/inter/cyrillic-700.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="header">
+  <div class="app-brand" title="Kanban Task Manager">
+    <span class="app-logo-wrap"><span class="app-logo" data-ico="listTodo" data-ico-size="17" data-ico-class="ico ico-logo"></span></span>
+    <span class="app-name">Kanban</span>
+  </div>
+
+  <!-- Вид -->
+  <div class="hdr-group">
+    <button type="button" class="hdr-btn active" id="boardBtn"><span data-ico="board" data-ico-size="15"></span><span class="hdr-btn-label">Доска</span></button>
+    <button type="button" class="hdr-btn" id="calendarBtn"><span data-ico="calendar" data-ico-size="15"></span><span class="hdr-btn-label">Календарь</span></button>
+    <button type="button" class="hdr-btn" id="pomodoroBtn"><span data-ico="timer" data-ico-size="15"></span><span class="hdr-btn-label">Помодоро</span></button>
+  </div>
+
+  <!-- Поиск + Фильтры -->
+  <div class="hdr-group">
+    <div class="hdr-search">
+      <input type="text" id="searchInput" placeholder="Поиск…" />
+      <span class="hdr-search-ico"><span data-ico="search" data-ico-size="14"></span></span>
+    </div>
+    <div class="hdr-sep"></div>
+    <div class="filter-btn-wrap">
+      <button type="button" class="hdr-btn" id="filterBtn" onclick="toggleFilterPanel()"><span data-ico="filter" data-ico-size="13"></span><span class="hdr-btn-label">Фильтры</span></button>
+      <div id="filterPanel">
+        <div class="filt-section"><div class="filt-label">Приоритет</div><div class="filt-options" id="filtPriority"><span class="filt-opt" data-val="low"><i class="filt-dot filt-dot-low"></i>Низкий</span><span class="filt-opt" data-val="medium"><i class="filt-dot filt-dot-medium"></i>Средний</span><span class="filt-opt" data-val="high"><i class="filt-dot filt-dot-high"></i>Высокий</span></div></div>
+        <div class="filt-section"><div class="filt-label">Объем</div><div class="filt-options" id="filtVolume"><span class="filt-opt" data-val="S">S</span><span class="filt-opt" data-val="M">M</span><span class="filt-opt" data-val="L">L</span><span class="filt-opt" data-val="XL">XL</span><span class="filt-opt" data-val="XXL">XXL</span></div></div>
+        <div class="filt-section"><div class="filt-label">Дедлайн</div><div class="filt-options" id="filtDeadline"><span class="filt-opt" data-val="overdue"><i class="filt-dot filt-dot-overdue"></i>Просрочен</span><span class="filt-opt" data-val="today"><i class="filt-dot filt-dot-today"></i>Сегодня</span><span class="filt-opt" data-val="week"><i class="filt-dot filt-dot-week"></i>Неделя</span><span class="filt-opt" data-val="month"><i class="filt-dot filt-dot-month"></i>Месяц</span></div></div>
+        <div class="filt-section"><div class="filt-label">Помодоро</div><div class="filt-options" id="filtPomodoro"><span class="filt-opt filt-opt-ico" data-val="min"><span data-ico="timer" data-ico-size="13"></span>Минуты</span><span class="filt-opt filt-opt-ico" data-val="h"><span data-ico="timer" data-ico-size="13"></span>Часы</span></div></div>
+        <div class="filt-section" style="border:none;padding:0;margin:0">
+          <div class="show-completed-row"><input type="checkbox" id="showCompleted" checked/><label for="showCompleted">Показывать выполненные</label></div>
+          <button type="button" onclick="clearAllFilters()" class="filt-reset-btn">Сбросить фильтры</button>
+        </div>
+      </div>
+    </div>
+    <div class="hdr-sep"></div>
+    <button type="button" class="hdr-btn" id="globalSortBtn" onclick="toggleGlobalSortMenu(event)"><span data-ico="sliders" data-ico-size="13"></span><span class="hdr-btn-label">Сортировка</span></button>
+  </div>
+
+  <!-- Инструменты -->
+  <div class="hdr-group">
+    <button type="button" class="hdr-btn" id="registryBtn" onclick="openRegistry()"><span data-ico="registry" data-ico-size="15"></span><span class="hdr-btn-label">Регулярные</span></button>
+    <button type="button" class="hdr-btn" id="templatesBtn" title="Шаблоны задач"><span data-ico="templates" data-ico-size="15"></span><span class="hdr-btn-label">Шаблоны</span></button>
+    <button type="button" class="hdr-btn" id="archiveBtn" title="Архив"><span data-ico="archive" data-ico-size="15"></span><span class="hdr-btn-label">Архив</span></button>
+    <button type="button" class="hdr-btn hdr-ico-btn" id="settingsBtn" title="Настройки"><span data-ico="settings" data-ico-size="17"></span></button>
+    <div class="hdr-sep"></div>
+    <button type="button" class="hdr-btn hdr-ico-btn" id="undoBtn" disabled onclick="undo()" title="Ctrl+Z"><span data-ico="undo" data-ico-size="17"></span></button>
+    <button type="button" class="hdr-btn hdr-ico-btn" id="redoBtn" disabled onclick="redo()" title="Ctrl+Y"><span data-ico="redo" data-ico-size="17"></span></button>
+    <div class="hdr-sep"></div>
+    <button type="button" class="hdr-btn hdr-ico-btn" onclick="exportProject()" title="Ctrl+S"><span data-ico="download" data-ico-size="17"></span></button>
+    <button type="button" class="hdr-btn hdr-ico-btn" onclick="document.getElementById('importFile').click()" title="Импорт"><span data-ico="upload" data-ico-size="17"></span></button>
+    <input type="file" id="importFile" style="display:none" accept=".json">
+    <div class="hdr-sep"></div>
+    <button type="button" class="hdr-btn hdr-ico-btn" id="hotkeysBtn" onclick="openHotkeys()" title="Справка по клавишам"><span data-ico="keyboard" data-ico-size="17"></span></button>
+    <button type="button" class="hdr-btn hdr-icon-cycle" id="themeBtn" onclick="toggleTheme()" title="Ctrl+T"><span class="hdr-theme-part hdr-theme-light" aria-hidden="true"><span data-ico="moon" data-ico-size="17"></span></span><span class="hdr-theme-part hdr-theme-dark" aria-hidden="true"><span data-ico="sun" data-ico-size="17"></span></span></button>
+  </div>
+</div>
+
+<div id="board" class="view active"></div>
+<div id="calendar" class="view"></div>
+<div id="pomodoro" class="view"></div>
+<div id="stickerMenu"></div>
+<div class="hk-hint" id="hkHint"></div>
+<div id="saveFlash" class="save-flash" aria-live="polite"><span data-ico="check" data-ico-size="12" data-ico-class="ico save-flash-ico"></span>Сохранено</div>
+
+<div id="taskPanel">
+  <div class="panel-head">
+    <button type="button" class="panel-collapse" id="taskPanelCollapse" onclick="collapseTaskPanel()" title="Свернуть панель" aria-label="Свернуть панель"><span data-ico="chevronRight" data-ico-size="20"></span></button>
+    <textarea id="taskName" class="panel-head-title" rows="1" placeholder="Название задачи" autocomplete="off" spellcheck="true" aria-label="Название задачи"></textarea>
+  </div>
+  <div class="panel-body-scroll">
+  <div class="panel-field panel-desc-field">
+    <label>Описание</label>
+    <div class="panel-desc-stack">
+      <div class="desc-editor-toolbar" id="descEditorToolbar">
+        <button type="button" class="desc-md-btn" data-mdcmd="bold" title="Жирный"><strong>B</strong></button>
+        <button type="button" class="desc-md-btn" data-mdcmd="italic" title="Курсив"><em>I</em></button>
+        <button type="button" class="desc-md-btn" data-mdcmd="strike" title="Зачёркнутый"><s>S</s></button>
+        <button type="button" class="desc-md-btn" data-mdcmd="underline" title="Подчёркнутый"><u>U</u></button>
+        <button type="button" class="desc-md-btn" data-mdcmd="quote" title="Цитата">&gt;</button>
+        <button type="button" class="desc-md-btn" data-mdcmd="date" title="Дата">date</button>
+        <span class="desc-tb-sep" aria-hidden="true"></span>
+        <div class="panel-dd-wrap desc-align-wrap" id="descAlignWrap">
+          <button type="button" class="desc-md-btn desc-align-trigger" id="descAlignBtn" title="Выравнивание" aria-expanded="false" aria-haspopup="true">
+            <span class="desc-align-trigger-inner"><span data-ico="alignLeft" data-ico-size="15"></span><span data-ico="chevronDown" data-ico-size="11" class="ico desc-align-chev"></span></span>
+          </button>
+          <div class="panel-dd-menu desc-align-menu" id="descAlignMenu" role="menu">
+            <button type="button" class="panel-dd-item desc-align-item" data-mdcmd="alignLeft" role="menuitem"><span data-ico="alignLeft" data-ico-size="14"></span>По левому краю</button>
+            <button type="button" class="panel-dd-item desc-align-item" data-mdcmd="alignCenter" role="menuitem"><span data-ico="alignCenter" data-ico-size="14"></span>По центру</button>
+            <button type="button" class="panel-dd-item desc-align-item" data-mdcmd="alignRight" role="menuitem"><span data-ico="alignRight" data-ico-size="14"></span>По правому краю</button>
+          </div>
+        </div>
+        <span class="desc-tb-sep" aria-hidden="true"></span>
+        <div class="desc-color-wrap" title="Цвет текста">
+          <span class="desc-color-swatch" id="descColorSwatch" aria-hidden="true"></span>
+          <input type="color" id="descEditorColor" class="desc-color-input-overlay" value="#334155" aria-label="Цвет текста"/>
+        </div>
+      </div>
+      <div id="descEditorInput" contenteditable="true" spellcheck="false" autocorrect="off" autocomplete="off" data-placeholder="Введите описание"></div>
+    </div>
+  </div>
+  <div class="panel-field"><label>Дедлайн</label><input type="text" id="taskDeadline" placeholder="ДД-ММ-ГГГГ ЧЧ:ММ"/></div>
+  <div class="panel-field"><label>Напоминание</label><div id="taskReminderDd" class="panel-dd"></div></div>
+  <div class="panel-field"><label>Приоритет</label><div id="taskPriorityDd" class="panel-dd"></div></div>
+  <div class="panel-field"><label>Объем</label><div id="taskVolumeDd" class="panel-dd"></div></div>
+  <div class="panel-field"><label>Помодоро</label><div class="panel-row panel-pom-row"><input type="text" id="pomCount" inputmode="numeric" placeholder="Кол-во" title="Сессий"><span class="panel-pom-x">×</span><input type="text" id="pomDur" inputmode="numeric" placeholder="Мин" title="Длительность"><div id="pomUnitDd" class="panel-dd panel-dd-compact"></div></div><button type="button" class="btn-pom-start" id="panelPomStartBtn"><span data-ico="play" data-ico-size="14"></span>Запустить помодоро</button></div>
+  <div class="panel-field panel-repeat-field">
+    <label>Регулярность</label>
+    <div class="panel-repeat-cap" id="panelRepeatLabel">Не задано</div>
+    <div class="panel-repeat-box">
+      <div class="panel-row panel-repeat-interval-row">
+        <input type="text" id="panelRepeatEvery" inputmode="numeric" placeholder="1">
+        <div id="panelRepeatUnitDd" class="panel-dd panel-dd-compact"></div>
+      </div>
+      <div class="panel-repeat-weekdays" id="panelRepeatWeekdaysRow" style="display:none">
+        <label class="repeat-wd"><input type="checkbox" class="panel-repeat-wd-cb" value="1"/> Пн</label>
+        <label class="repeat-wd"><input type="checkbox" class="panel-repeat-wd-cb" value="2"/> Вт</label>
+        <label class="repeat-wd"><input type="checkbox" class="panel-repeat-wd-cb" value="3"/> Ср</label>
+        <label class="repeat-wd"><input type="checkbox" class="panel-repeat-wd-cb" value="4"/> Чт</label>
+        <label class="repeat-wd"><input type="checkbox" class="panel-repeat-wd-cb" value="5"/> Пт</label>
+        <label class="repeat-wd"><input type="checkbox" class="panel-repeat-wd-cb" value="6"/> Сб</label>
+        <label class="repeat-wd"><input type="checkbox" class="panel-repeat-wd-cb" value="0"/> Вс</label>
+      </div>
+      <div class="panel-repeat-grid">
+        <div class="panel-repeat-field-compact panel-repeat-field-time">
+          <span class="panel-repeat-sublabel">Время</span>
+          <input type="text" id="panelRepeatTime" placeholder="ЧЧ:ММ" autocomplete="off"/>
+        </div>
+        <div class="panel-repeat-field-compact">
+          <span class="panel-repeat-sublabel">Начало</span>
+          <input type="text" id="panelRepeatStart" placeholder="ДД-ММ-ГГГГ" autocomplete="off"/>
+        </div>
+        <div class="panel-repeat-field-compact">
+          <span class="panel-repeat-sublabel">Конец</span>
+          <input type="text" id="panelRepeatEnd" placeholder="необязательно" autocomplete="off"/>
+        </div>
+      </div>
+      <div class="panel-repeat-actions">
+        <button type="button" class="btn-repeat-clear reg-remove-btn" id="panelRepeatClearBtn">Убрать</button>
+        <button type="button" class="btn-repeat-save" id="panelRepeatSaveBtn">Применить</button>
+      </div>
+    </div>
+  </div>
+  </div>
+</div>
+
+<div id="registryModal"><div class="registry-box"><div class="registry-header"><h3 class="modal-h"><span data-ico="registry" data-ico-size="18"></span>Регулярные задачи</h3><button type="button" class="registry-close" onclick="closeRegistry()" aria-label="Закрыть"><span data-ico="x" data-ico-size="18"></span></button></div><div class="registry-body" id="registryBody"></div></div></div>
+<div id="archiveModal"><div class="registry-box"><div class="registry-header"><h3 class="modal-h"><span data-ico="archive" data-ico-size="18"></span>Архив</h3><button type="button" class="registry-close" onclick="closeArchive()" aria-label="Закрыть"><span data-ico="x" data-ico-size="18"></span></button></div><div class="registry-body" id="archiveBody"></div></div></div>
+<div id="templatesModal"><div class="registry-box"><div class="registry-header"><h3 class="modal-h"><span data-ico="templates" data-ico-size="18"></span>Шаблоны задач</h3><button type="button" class="registry-close" onclick="closeTemplates()" aria-label="Закрыть"><span data-ico="x" data-ico-size="18"></span></button></div><div class="registry-body" id="templatesBody"></div></div></div>
+<div id="settingsModal"><div class="registry-box"><div class="registry-header"><h3 class="modal-h"><span data-ico="settings" data-ico-size="18"></span>Настройки</h3><button type="button" class="registry-close" onclick="closeSettings()" aria-label="Закрыть"><span data-ico="x" data-ico-size="18"></span></button></div><div class="registry-body">
+  <div class="settings-options">
+    <div class="set-opt-row"><span class="set-opt-label">При закрытии окна сворачивать в трей (не завершать приложение)</span><label class="set-switch"><input type="checkbox" id="setCloseTray"/><span class="set-switch-ui" aria-hidden="true"></span></label></div>
+    <div class="set-opt-row"><span class="set-opt-label">Короткая подсказка «Сохранено» после автосохранения</span><label class="set-switch"><input type="checkbox" id="setSaveFlash"/><span class="set-switch-ui" aria-hidden="true"></span></label></div>
+    <div class="set-opt-row"><span class="set-opt-label">В календаре учитывать поиск и фильтры доски</span><label class="set-switch"><input type="checkbox" id="setCalBoardFilt"/><span class="set-switch-ui" aria-hidden="true"></span></label></div>
+    <div class="set-section-label">Помодоро</div>
+    <div class="set-opt-row set-opt-row-num"><span class="set-opt-label">Короткий перерыв (мин)</span><input type="number" id="setPomShort" min="1" max="60" class="set-num-input"/></div>
+    <div class="set-opt-row set-opt-row-num"><span class="set-opt-label">Длинный перерыв (мин)</span><input type="number" id="setPomLong" min="1" max="90" class="set-num-input"/></div>
+    <div class="set-opt-row set-opt-row-num"><span class="set-opt-label">Длинный каждые N помодоро</span><input type="number" id="setPomEvery" min="2" max="12" class="set-num-input"/></div>
+    <div class="set-opt-row"><span class="set-opt-label">Автостарт перерыва после работы</span><label class="set-switch"><input type="checkbox" id="setPomAutoBreak"/><span class="set-switch-ui" aria-hidden="true"></span></label></div>
+    <div class="set-opt-row"><span class="set-opt-label">Автостарт следующей задачи из очереди</span><label class="set-switch"><input type="checkbox" id="setPomAutoNext"/><span class="set-switch-ui" aria-hidden="true"></span></label></div>
+    <div class="set-opt-row"><span class="set-opt-label">В помодоро учитывать поиск и фильтры доски</span><label class="set-switch"><input type="checkbox" id="setPomBoardFilt"/><span class="set-switch-ui" aria-hidden="true"></span></label></div>
+    <div class="set-section-label">Облако (Supabase)</div>
+    <p class="cloud-hint">Ключи хранятся локально в профиле приложения. В Supabase выполните миграцию <code>supabase/migrations/001_kanban_boards.sql</code>.</p>
+    <div class="cloud-field"><label class="cloud-label" for="cloudSupabaseUrl">URL проекта</label><input type="url" id="cloudSupabaseUrl" class="cloud-input" placeholder="https://xxxx.supabase.co" autocomplete="off"/></div>
+    <div class="cloud-field"><label class="cloud-label" for="cloudAnonKey">Anon / publishable ключ</label><input type="password" id="cloudAnonKey" class="cloud-input" placeholder="sb_publishable_… или eyJ…" autocomplete="off"/></div>
+    <div class="cloud-actions-row"><button type="button" class="btn-ghost" id="cloudSaveConfigBtn">Сохранить параметры</button></div>
+    <div id="cloudSignInRow" class="cloud-auth-block">
+      <div class="cloud-field"><label class="cloud-label" for="cloudEmail">Email</label><input type="email" id="cloudEmail" class="cloud-input" autocomplete="username"/></div>
+      <div class="cloud-field"><label class="cloud-label" for="cloudPassword">Пароль</label><input type="password" id="cloudPassword" class="cloud-input" autocomplete="current-password"/></div>
+      <div class="cloud-actions-row">
+        <button type="button" class="btn-ghost" id="cloudSignInBtn">Войти</button>
+        <button type="button" class="btn-ghost" id="cloudSignUpBtn">Регистрация</button>
+      </div>
+    </div>
+    <div id="cloudSignedInRow" class="cloud-auth-block" style="display:none">
+      <p class="cloud-signed-email"><span id="cloudUserEmail"></span></p>
+      <button type="button" class="btn-ghost" id="cloudSignOutBtn">Выйти</button>
+    </div>
+    <div class="set-opt-row"><span class="set-opt-label">Автосинхронизация после сохранения (≈2.5 с)</span><label class="set-switch"><input type="checkbox" id="setCloudAutoSync"/><span class="set-switch-ui" aria-hidden="true"></span></label></div>
+    <div class="cloud-actions-row cloud-sync-btns">
+      <button type="button" class="btn-ghost" id="cloudSyncNowBtn">Синхронизировать</button>
+      <button type="button" class="btn-ghost" id="cloudPushBtn">↑ В облако</button>
+      <button type="button" class="btn-ghost" id="cloudPullBtn">↓ Из облака</button>
+    </div>
+    <p id="cloudSyncStatus" class="cloud-sync-status" aria-live="polite"></p>
+  </div>
+  <div class="settings-actions"><button type="button" class="btn-cancel" onclick="closeSettings()">Отмена</button><button type="button" class="btn-ok" onclick="applySettings()">Сохранить</button></div>
+</div></div></div>
+<div id="repeatModal"><div class="repeat-box repeat-box-wide"><h3 class="modal-h"><span data-ico="rotateCcw" data-ico-size="18"></span>Повторение <button type="button" class="modal-close-inline" onclick="closeRepeatModal()" aria-label="Закрыть"><span data-ico="x" data-ico-size="18"></span></button></h3><div class="repeat-field"><label id="repeatIntervalLabel">Интервал</label><div class="repeat-interval-row"><input type="number" id="repeatEvery" min="1" max="999" value="1"/><select id="repeatUnit"><option value="days">дней</option><option value="weeks">недель</option><option value="months">месяцев</option><option value="weekdays">дни недели</option></select></div></div><div class="repeat-field" id="repeatWeekdaysRow" style="display:none"><label>Дни недели</label><div class="repeat-weekday-grid"><label class="repeat-wd"><input type="checkbox" class="repeat-wd-cb" value="1"/> Пн</label><label class="repeat-wd"><input type="checkbox" class="repeat-wd-cb" value="2"/> Вт</label><label class="repeat-wd"><input type="checkbox" class="repeat-wd-cb" value="3"/> Ср</label><label class="repeat-wd"><input type="checkbox" class="repeat-wd-cb" value="4"/> Чт</label><label class="repeat-wd"><input type="checkbox" class="repeat-wd-cb" value="5"/> Пт</label><label class="repeat-wd"><input type="checkbox" class="repeat-wd-cb" value="6"/> Сб</label><label class="repeat-wd"><input type="checkbox" class="repeat-wd-cb" value="0"/> Вс</label></div></div><div class="repeat-field"><label>Время</label><input type="text" id="repeatTime" placeholder="ЧЧ:ММ"/></div><div class="repeat-field"><label>Начало</label><input type="text" id="repeatStart" placeholder="ДД-ММ-ГГГГ"/></div><div class="repeat-field"><label>Конец (необязательно)</label><input type="text" id="repeatEnd" placeholder="ДД-ММ-ГГГГ"/></div><div class="repeat-buttons"><button class="btn-repeat-clear" onclick="clearRepeat()">Убрать</button><button class="btn-repeat-cancel" onclick="closeRepeatModal()">Отмена</button><button class="btn-repeat-save" onclick="saveRepeat()">Сохранить</button></div></div></div>
+
+<div id="hotkeysModal"><div class="registry-box"><div class="registry-header"><h3 class="modal-h"><span data-ico="keyboard" data-ico-size="18"></span>Горячие клавиши</h3><button type="button" class="registry-close" onclick="closeHotkeys()" aria-label="Закрыть"><span data-ico="x" data-ico-size="18"></span></button></div><div class="registry-body"><div class="hotkeys-layout">
+    <div class="hk-group">
+      <div class="hk-group-label">Навигация</div>
+      <div class="hk-row"><span class="hk-desc">Доска</span><span class="hk-kbd">B</span></div>
+      <div class="hk-row"><span class="hk-desc">Календарь</span><span class="hk-kbd">C</span></div>
+      <div class="hk-row"><span class="hk-desc">Помодоро</span><span class="hk-kbd">P</span></div>
+      <div class="hk-row"><span class="hk-desc">Поиск (фокус в поле)</span><span class="hk-kbd">Ctrl+K</span></div>
+      <div class="hk-row"><span class="hk-desc">Сбросить поиск</span><span class="hk-kbd">Shift+K</span></div>
+      <div class="hk-row"><span class="hk-desc">Фильтры</span><span class="hk-kbd">F</span></div>
+      <div class="hk-row"><span class="hk-desc">Сбросить фильтры</span><span class="hk-kbd">Shift+F</span></div>
+      <div class="hk-row"><span class="hk-desc">Сортировка всех колонок (на доске)</span><span class="hk-kbd">O</span></div>
+      <div class="hk-row"><span class="hk-desc">Показывать выполненные</span><span class="hk-kbd">H</span></div>
+      <div class="hk-row"><span class="hk-desc">Закрыть модальные окна / свернуть панель задачи</span><span class="hk-kbd">Esc</span></div>
+    </div>
+    <div class="hk-group">
+      <div class="hk-group-label">Доска — колонки</div>
+      <div class="hk-row"><span class="hk-desc">Выбрать колонку для N (подсветка рамкой)</span><span class="hk-kbd">клик</span></div>
+      <div class="hk-row"><span class="hk-desc">Предыдущая / следующая колонка</span><span class="hk-kbd">Ctrl+← / Ctrl+→</span></div>
+      <div class="hk-row"><span class="hk-desc">Порядок колонок</span><span class="hk-kbd">перетащить заголовок</span></div>
+      <div class="hk-row"><span class="hk-desc">Новая задача в текущей колонке</span><span class="hk-kbd">N</span></div>
+      <div class="hk-row"><span class="hk-desc">Развернуть все блоки подзадач</span><span class="hk-kbd">Ctrl+Shift+]</span></div>
+      <div class="hk-row"><span class="hk-desc">Свернуть все блоки подзадач</span><span class="hk-kbd">Ctrl+Shift+[</span></div>
+    </div>
+    <div class="hk-group">
+      <div class="hk-group-label">Календарь</div>
+      <div class="hk-row"><span class="hk-desc">Предыдущий период</span><span class="hk-kbd">←</span></div>
+      <div class="hk-row"><span class="hk-desc">Следующий период</span><span class="hk-kbd">→</span></div>
+      <div class="hk-row"><span class="hk-desc">Месяц / Неделя / Агенда</span><span class="hk-kbd">M / W / A</span></div>
+    </div>
+    <div class="hk-group">
+      <div class="hk-group-label">История</div>
+      <div class="hk-row"><span class="hk-desc">Отменить</span><span class="hk-kbd">Ctrl+Z</span></div>
+      <div class="hk-row"><span class="hk-desc">Повторить</span><span class="hk-kbd">Ctrl+Y</span></div>
+    </div>
+    <div class="hk-group">
+      <div class="hk-group-label">Интерфейс</div>
+      <div class="hk-row"><span class="hk-desc">Тёмная тема</span><span class="hk-kbd">Ctrl+T</span></div>
+      <div class="hk-row"><span class="hk-desc">Экспорт</span><span class="hk-kbd">Ctrl+S</span></div>
+      <div class="hk-row"><span class="hk-desc">Эта подсказка</span><span class="hk-kbd">?</span></div>
+    </div>
+  </div></div></div></div>
+
+<div id="columnStyleModal"><div class="column-style-box"><div class="column-style-head"><h3 class="column-style-h">Оформление колонки</h3><button type="button" class="column-style-x" onclick="closeColumnStyleModal()" aria-label="Закрыть"><span data-ico="x" data-ico-size="18"></span></button></div><div class="column-style-body"><label class="column-style-label">Иконка</label><div id="columnStyleIconGrid" class="col-style-icon-grid"></div><label class="column-style-label">Цвет</label><div id="columnStyleColorRow" class="col-style-color-row"></div><div class="col-style-color-custom"><span>Точный цвет</span><input type="color" id="columnStyleColorInput" value="#6366f1" aria-label="Цвет колонки"/></div></div><div class="settings-actions column-style-foot"><button type="button" class="btn-cancel" onclick="closeColumnStyleModal()">Отмена</button><button type="button" class="btn-ok" onclick="applyColumnStyle()">Применить</button></div></div></div>
+<div id="customModal"><div class="modal-box"><h3 id="modalTitle">Введите текст</h3><input type="text" id="modalInput"/><div class="modal-buttons"><button type="button" class="btn-cancel" onclick="modalCancel()">Отмена</button><button type="button" class="btn-ok" onclick="modalOk()">OK</button></div></div></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

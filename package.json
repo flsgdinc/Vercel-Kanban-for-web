@@ -1,0 +1,47 @@
+{
+  "name": "kanban-app",
+  "version": "1.2.0",
+  "description": "Kanban task manager with calendar",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis",
+    "lint": "eslint .",
+    "test": "node --test tests/*.test.mjs",
+    "build:vendor": "esbuild node_modules/@supabase/supabase-js/dist/index.mjs --bundle --format=esm --platform=browser --outfile=src/js/vendor/supabase.bundle.mjs",
+    "web:install": "npm install --prefix web",
+    "web:dev": "npm run dev --prefix web",
+    "web:build": "npm run build --prefix web",
+    "web:preview": "npm run preview --prefix web"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.1.0",
+    "@supabase/supabase-js": "^2.105.4"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "electron": "^42.0.0",
+    "electron-builder": "^26.8.1",
+    "eslint": "^9.15.0",
+    "globals": "^15.12.0"
+  },
+  "build": {
+    "appId": "com.kanban.app",
+    "productName": "Kanban Task Manager",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "icon": "src/icon.png",
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
