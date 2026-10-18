@@ -18,7 +18,7 @@ export function clearPomodoroStatePersistence() {
  */
 export function schedulePomodoroPersist(exportFn) {
   if (!persistCallback) return;
-  if (persistTimer) clearTimeout(persistTimer);
+  if (persistTimer) return;
   persistTimer = setTimeout(() => {
     persistTimer = null;
     try {
