@@ -38,6 +38,7 @@ import { findTask } from './kanban/task-find.js';
 import { toggleDone } from './kanban/tasks.js';
 import { wireRuntime, run } from './kanban/runtime.js';
 import { showSaveFlash } from './kanban/save-flash.js';
+import { soundVolumePercent } from './kanban/sound-volume.js';
 import { hydrateDataIcons, icon, shapes as icoShapes } from './icons.js';
 import {
   COLUMN_PACK_ICON_FILES,
@@ -1941,7 +1942,7 @@ function openSettings(){
   const pab=document.getElementById('setPomAutoBreak');if(pab)pab.checked=!!s.pomAutoStartBreak;
   const pan=document.getElementById('setPomAutoNext');if(pan)pan.checked=!!s.pomAutoStartNext;
   const pbf=document.getElementById('setPomBoardFilt');if(pbf)pbf.checked=s.pomUseBoardFilters!==false;
-  const pvol=document.getElementById('setPomSoundVol');if(pvol)pvol.value=String(Math.round((Number(s.pomSoundVolume)??0.85)*100));
+  const pvol=document.getElementById('setPomSoundVol');if(pvol)pvol.value=String(soundVolumePercent(s.pomSoundVolume));
   document.getElementById('settingsModal')?.classList.add('open');
 }
 function closeSettings(){document.getElementById('settingsModal')?.classList.remove('open')}

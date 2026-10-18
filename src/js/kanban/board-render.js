@@ -266,6 +266,7 @@ function makeCard(task) {
       const dropEl = card.querySelector('.subtasks-dropdown');
       if (dropEl) dropEl.className = 'subtasks-dropdown' + (task.expanded ? ' open' : '');
     }
+    d.openPanel(task.id);
   });
   card.appendChild(row);
 

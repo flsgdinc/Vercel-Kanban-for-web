@@ -1,5 +1,7 @@
 /** Custom notification sounds from settings (pomodoro, deadline reminders). */
 
+import { normalizeSoundVolume } from './sound-volume.js';
+
 /** @type {HTMLAudioElement | null} */
 let activeAudio = null;
 
@@ -46,7 +48,7 @@ export function playSoundFile(filePath, volume = 0.85) {
 }
 
 function soundVolume(appSettings) {
-  return Math.min(1, Math.max(0, Number(appSettings?.pomSoundVolume) || 0.85));
+  return normalizeSoundVolume(appSettings?.pomSoundVolume);
 }
 
 /**
