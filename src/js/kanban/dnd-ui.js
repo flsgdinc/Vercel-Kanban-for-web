@@ -59,17 +59,18 @@ export function getVisibleTaskCards(list) {
 /**
  * @param {HTMLElement} list
  * @param {number} clientY
- * @returns {{ insertBefore: Element | null, index: number }}
+ * @param {string | null} [excludeId]
+ * @returns {{ insertBefore: Element | null, index: number, beforeId: string | null }}
  */
-export function resolveTaskDrop(list, clientY) {
-  const cards = getVisibleTaskCards(list);
+export function resolveTaskDrop(list, clientY, excludeId = null) {
+  const cards = getVisibleTaskCards(list).filter((card) => card.dataset.id !== excludeId);
   for (let i = 0; i < cards.length; i++) {
     const box = cards[i].getBoundingClientRect();
     if (clientY < box.top + box.height / 2) {
-      return { insertBefore: cards[i], index: i };
+      return { insertBefore: cards[i], index: i, beforeId: cards[i].dataset.id };
     }
   }
-  return { insertBefore: null, index: cards.length };
+  return { insertBefore: null, index: cards.length, beforeId: null };
 }
 
 export function clearTaskDropSlot() {

@@ -1,5 +1,6 @@
 import { PDOTS, PRIORITIES, VOLUMES } from './constants.js';
 import { SORT_MENU_ITEMS, sortColumnTasks, sortAllColumns } from './kanban/task-sort.js';
+import { insertIndexAfterRemoval } from './kanban/drop-position.js';
 import {
   clearAllDropUi,
   clearTaskDropSlot,
@@ -83,7 +84,7 @@ import {
 } from './kanban/pomodoro-view.js';
 
 let draggedTaskId=null,draggedColId=null,draggedCalTaskId=null,activeMenu=null,selectedTask=null;
-/** @type {{ colId: string, index: number } | null} */
+/** @type {{ colId: string, beforeId: string | null } | null} */
 let lastTaskDrop=null;
 /** @type {{ index: number, beforeId?: string } | null} */
 let lastColumnDrop=null;
@@ -1099,8 +1100,8 @@ function setupBoardDnD(){
     e.preventDefault();
     const tl=getTaskListFromEvent(e);
     if(tl&&draggedTaskId){
-      const pos=resolveTaskDrop(tl,e.clientY);
-      lastTaskDrop={colId:tl.dataset.column,index:pos.index};
+      const pos=resolveTaskDrop(tl,e.clientY,draggedTaskId);
+      lastTaskDrop={colId:tl.dataset.column,beforeId:pos.beforeId};
       renderTaskDropSlot(tl,pos);
     }else if(draggedTaskId)clearTaskDropSlot();
     if(draggedColId){
@@ -1134,39 +1135,44 @@ function setupBoardDnD(){
     }
     const tl=getTaskListFromEvent(e);
     if(tl&&draggedTaskId&&lastTaskDrop&&lastTaskDrop.colId===tl.dataset.column){
-      pushHistory();
-      let task=null;let fromColId=null;let fromIdx=-1;
+      let task=null;let fromColId=null;let fromIdx=-1;let fromCol=null;
       for(const c of state.columns){
         const i=c.tasks.findIndex(t=>t.id===draggedTaskId);
-        if(i!==-1){fromColId=c.id;fromIdx=i;task=c.tasks.splice(i,1)[0];break}
+        if(i!==-1){fromCol=c;fromColId=c.id;fromIdx=i;task=c.tasks[i];break}
       }
       if(task){
         const tc=state.columns.find(c=>c.id===lastTaskDrop.colId);
         if(tc){
-          let idx=lastTaskDrop.index;
-          if(fromColId===tc.id&&fromIdx<idx)idx-=1;
-          idx=Math.max(0,Math.min(idx,tc.tasks.length));
-          tc.tasks.splice(idx,0,task);
+          const idx=insertIndexAfterRemoval(tc.tasks.map(t=>t.id),task.id,lastTaskDrop.beforeId);
+          if(fromColId!==tc.id||idx!==fromIdx){
+            pushHistory();
+            fromCol.tasks.splice(fromIdx,1);
+            const insertIdx=insertIndexAfterRemoval(tc.tasks.map(t=>t.id),task.id,lastTaskDrop.beforeId);
+            tc.tasks.splice(insertIdx,0,task);
+            saveStateNoHistory();renderBoard();
+          }
         }
-        saveStateNoHistory();renderBoard();
       }
       draggedTaskId=null;lastTaskDrop=null;return;
     }
     if(tl&&draggedTaskId){
-      pushHistory();
-      let task=null;let fromColId=null;let fromIdx=-1;
+      let task=null;let fromColId=null;let fromIdx=-1;let fromCol=null;
       for(const c of state.columns){
         const i=c.tasks.findIndex(t=>t.id===draggedTaskId);
-        if(i!==-1){fromColId=c.id;fromIdx=i;task=c.tasks.splice(i,1)[0];break}
+        if(i!==-1){fromCol=c;fromColId=c.id;fromIdx=i;task=c.tasks[i];break}
       }
       if(task){
         const tc=state.columns.find(c=>c.id===tl.dataset.column);
         if(tc){
-          const pos=resolveTaskDrop(tl,e.clientY);
-          let idx=pos.index;
-          if(fromColId===tc.id&&fromIdx<idx)idx-=1;
-          tc.tasks.splice(Math.max(0,Math.min(idx,tc.tasks.length)),0,task);
-          saveStateNoHistory();renderBoard();
+          const pos=resolveTaskDrop(tl,e.clientY,draggedTaskId);
+          const idx=insertIndexAfterRemoval(tc.tasks.map(t=>t.id),task.id,pos.beforeId);
+          if(fromColId!==tc.id||idx!==fromIdx){
+            pushHistory();
+            fromCol.tasks.splice(fromIdx,1);
+            const insertIdx=insertIndexAfterRemoval(tc.tasks.map(t=>t.id),task.id,pos.beforeId);
+            tc.tasks.splice(insertIdx,0,task);
+            saveStateNoHistory();renderBoard();
+          }
         }
       }
     }

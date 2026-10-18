@@ -373,10 +373,8 @@ function makeCard(task) {
     ) {
       d.pushHistory();
       const subs = task.subtasks;
-      let toIdx = target.toIdx;
-      if (target.fromIdx < toIdx) toIdx -= 1;
       const [moved] = subs.splice(target.fromIdx, 1);
-      subs.splice(toIdx, 0, moved);
+      subs.splice(target.toIdx, 0, moved);
       d.saveStateNoHistory();
       renderBoard();
     }
