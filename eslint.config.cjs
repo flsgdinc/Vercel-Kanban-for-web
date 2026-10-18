@@ -27,6 +27,14 @@ module.exports = [
     }
   },
   {
+    files: ['web/src/**/*.{js,mjs}'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: { ...globals.browser, structuredClone: 'readonly' }
+    }
+  },
+  {
     files: ['main.cjs'],
     languageOptions: {
       ecmaVersion: 2022,
