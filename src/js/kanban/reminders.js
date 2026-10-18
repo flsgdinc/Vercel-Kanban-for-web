@@ -1,13 +1,9 @@
 import { deadlineLabel } from '../deadline-utils.js';
 import { state } from '../state.js';
+import { showAppNotification } from './app-notify.js';
 
 const REMINDER_MINUTES = { '5m': 5, '15m': 15, '30m': 30, '1h': 60, '3h': 180, '1d': 1440, '1w': 10080 };
 const reminderFired = new Set();
-
-function notifyKanban(title, body) {
-  if (window.electronAPI?.showNotification) void window.electronAPI.showNotification({ title, body });
-  else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification(title, { body });
-}
 
 function reminderStoreKey(t) {
   return `${t.id}\0${t.deadline || ''}\0${t.deadlineReminder || ''}`;
@@ -28,7 +24,12 @@ export function checkDeadlineReminders() {
       const key = reminderStoreKey(task);
       if (reminderFired.has(key)) continue;
       reminderFired.add(key);
-      notifyKanban('Скоро дедлайн', `${task.title || 'Задача'} — ${deadlineLabel(task.deadline)}`);
+      showAppNotification({
+        title: 'Напоминание: дедлайн',
+        body: `${task.title || 'Задача'} — ${deadlineLabel(task.deadline)}`,
+        sound: 'deadline',
+        appSettings: state.appSettings
+      });
     }
   }
 }

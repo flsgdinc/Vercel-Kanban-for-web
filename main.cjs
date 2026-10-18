@@ -106,6 +106,18 @@ function createWindow() {
             mainWindow.hide();
         }
     });
+
+    mainWindow.on('focus', () => {
+        if (!mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('stop-notification-sounds');
+        }
+    });
+}
+
+function sendStopNotificationSounds() {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('stop-notification-sounds');
+    }
 }
 
 app.whenReady().then(() => {
@@ -267,20 +279,82 @@ ipcMain.handle('supabase-save-session', async (event, session) => {
     }
 });
 
-ipcMain.handle('show-notification', async (event, { title, body }) => {
+const SOUND_PICK_SLOTS = {
+    work: { fileKey: 'pom-work', title: 'Звук окончания работы (помодоро)' },
+    break: { fileKey: 'pom-break', title: 'Звук окончания перерыва (помодоро)' },
+    deadline: { fileKey: 'deadline-reminder', title: 'Звук напоминания о дедлайне' }
+};
+
+function notificationIconPath() {
+    const candidates = [
+        path.join(__dirname, 'src', 'icon.png'),
+        path.join(__dirname, 'icon.png')
+    ];
+    for (const p of candidates) {
+        try {
+            const img = nativeImage.createFromPath(p);
+            if (!img.isEmpty()) return p;
+        } catch {
+            /* next */
+        }
+    }
+    return undefined;
+}
+
+ipcMain.handle('pick-sound-file', async (event, { slot }) => {
+    const cfg = SOUND_PICK_SLOTS[slot] || SOUND_PICK_SLOTS.work;
+    const parent = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+    let lifted = false;
+    try {
+        if (parent) {
+            if (!parent.isVisible()) parent.show();
+            parent.focus();
+            parent.moveTop();
+            parent.setAlwaysOnTop(true, 'screen-saver');
+            lifted = true;
+        }
+        const result = await dialog.showOpenDialog(parent ?? undefined, {
+            title: cfg.title,
+            properties: ['openFile'],
+            filters: [
+                { name: 'Аудио', extensions: ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'wma'] },
+                { name: 'Все файлы', extensions: ['*'] }
+            ]
+        });
+        if (result.canceled || !result.filePaths?.[0]) return null;
+        const src = result.filePaths[0];
+        const soundsDir = path.join(app.getPath('userData'), 'sounds');
+        await fs.mkdir(soundsDir, { recursive: true });
+        const ext = path.extname(src) || '.mp3';
+        const dest = path.join(soundsDir, `${cfg.fileKey}${ext}`);
+        await fs.copyFile(src, dest);
+        return dest;
+    } catch (error) {
+        console.error('pick-sound-file failed', error);
+        return { error: String(error?.message || error) };
+    } finally {
+        if (lifted && parent) parent.setAlwaysOnTop(false);
+    }
+});
+
+ipcMain.handle('show-notification', async (_event, { title, body }) => {
     if (!Notification.isSupported()) return false;
     try {
+        const icon = notificationIconPath();
         const n = new Notification({
-            title: title || 'Kanban',
-            body: body || ''
+            title: title || 'Kanban Task Manager',
+            body: body || '',
+            icon,
+            silent: false
         });
-        n.show();
         n.on('click', () => {
+            sendStopNotificationSounds();
             if (mainWindow) {
-                mainWindow.show();
+                if (!mainWindow.isVisible()) mainWindow.show();
                 mainWindow.focus();
             }
         });
+        n.show();
         return true;
     } catch (err) {
         console.error('Notification failed', err);

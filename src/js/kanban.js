@@ -1,5 +1,15 @@
 import { PDOTS, PRIORITIES, VOLUMES } from './constants.js';
 import { SORT_MENU_ITEMS, sortColumnTasks, sortAllColumns } from './kanban/task-sort.js';
+import {
+  clearAllDropUi,
+  clearTaskDropSlot,
+  getTaskListFromEvent,
+  renderColumnDropUi,
+  renderTaskDropSlot,
+  resolveColumnDrop,
+  resolveTaskDrop,
+  setDraggedTaskSlotHeight
+} from './kanban/dnd-ui.js';
 import { state } from './state.js';
 import { escapeHtml, escapeAttr } from './html-escape.js';
 import { validateImportPayload, EXPORT_VERSION, packPersistPayload } from './state-envelope.js';
@@ -54,16 +64,28 @@ import {
   onPomodoroTick,
   setPomodoroHint,
   skipToIdle,
-  getPomodoroTaskId
+  getPomodoroTaskId,
+  restorePomodoroSession,
+  refreshBoardPomodoroUi,
+  getPomodoroPhase,
+  isPomodoroRunning,
+  isPomodoroPaused
 } from './kanban/pomodoro-timer.js';
+import { bindPomodoroStatePersistence } from './kanban/pomodoro-session.js';
+import { stopAllAppSounds } from './kanban/pomodoro-sounds.js';
 import { registerPomodoroTimerHooks } from './kanban/pomodoro-hooks.js';
 import {
   renderPomodoroView,
   setSelectedPomodoroTaskId,
-  updatePomodoroTimerUi
+  updatePomodoroTimerUi,
+  getSelectedPomodoroTaskId
 } from './kanban/pomodoro-view.js';
 
-let draggedTaskId=null,draggedColId=null,draggedCalTaskId=null,activeMenu=null,selectedTask=null,dropIndicator=null;
+let draggedTaskId=null,draggedColId=null,draggedCalTaskId=null,activeMenu=null,selectedTask=null;
+/** @type {{ colId: string, index: number } | null} */
+let lastTaskDrop=null;
+/** @type {{ index: number, beforeId?: string } | null} */
+let lastColumnDrop=null;
 let stickerTaskId=null,stickerMenuOpen=false;
 let draggedSubIdx=null,draggedSubTaskId=null;
 let descEditorPushedHistory=false;
@@ -134,13 +156,17 @@ function toggleShowCompleted(){
   const cb=document.getElementById('showCompleted');
   if(cb)cb.checked=v;
   renderBoard();
-  showHkHint(v?'Видны выполненные':'Выполненные скрыты');
+  showHkHint(v?'Показаны выполненные':'Скрыты выполненные');
 }
 
 // ─── Init ──────────────────────────────────────────────────────────────
 export async function initApp(){
   await hydrateAppState();
   migrateAndNormalizeState(state);
+  bindPomodoroStatePersistence((session) => {
+    state.pomodoroSession = session;
+    saveStateNoHistory();
+  });
   if(window.electronAPI?.setCloseBehavior)void window.electronAPI.setCloseBehavior(!!state.appSettings?.closeToTray);
   if(localStorage.getItem('kanban_theme')==='dark')document.body.classList.add('dark');
   initKanbanModules({
@@ -188,6 +214,15 @@ export async function initApp(){
     highlightTask
   });
   wireRuntime({renderBoard,renderCalendar,renderPomodoro,showHkHint,showSaveFlash});
+  window.electronAPI?.onStopNotificationSounds?.(() => stopAllAppSounds());
+  setPomodoroHint(showHkHint);
+  registerPomodoroTimerHooks(stopPomodoro, getPomodoroTaskId);
+  restorePomodoroSession(state.pomodoroSession, {
+    onExpired: () => {
+      saveStateNoHistory();
+      run.refreshAll();
+    }
+  });
   try {
     const cloud = await import('./supabase/cloud-ui.js');
     cloud.initCloudUi({
@@ -200,11 +235,9 @@ export async function initApp(){
   } catch (err) {
     console.error('Облако Supabase недоступно', err);
   }
-  setPomodoroHint(showHkHint);
-  registerPomodoroTimerHooks(stopPomodoro, getPomodoroTaskId);
   onPomodoroTick(()=>{
     if(document.getElementById('pomodoro')?.classList.contains('active'))updatePomodoroTimerUi();
-    else if(getPomodoroTaskId())renderBoard();
+    else refreshBoardPomodoroUi();
   });
   hydrateDataIcons(document.body);
   document.getElementById('boardBtn').onclick=()=>switchView('board');
@@ -251,6 +284,21 @@ export async function initApp(){
   document.getElementById('templatesBtn')?.addEventListener('click',openTemplates);
   document.getElementById('archiveBtn')?.addEventListener('click',openArchive);
   document.getElementById('settingsBtn')?.addEventListener('click',openSettings);
+  document.getElementById('settingsModal')?.addEventListener('click',(e)=>{
+    const pickBtn=e.target.closest('[data-app-sound-pick]');
+    if(pickBtn){
+      e.preventDefault();
+      e.stopPropagation();
+      void pickAppSound(pickBtn.dataset.appSoundPick);
+      return;
+    }
+    const clearBtn=e.target.closest('[data-app-sound-clear]');
+    if(clearBtn){
+      e.preventDefault();
+      e.stopPropagation();
+      clearAppSound(clearBtn.dataset.appSoundClear);
+    }
+  });
   updateUndoRedoBtns();
   const ru=document.getElementById('repeatUnit');
   if(ru)ru.addEventListener('change',syncRepeatModalUnitUI);
@@ -455,6 +503,45 @@ function setupKeyboard(){
       }
       return;
     }
+    const pomView=document.getElementById('pomodoro')?.classList.contains('active');
+    const pomPhase=getPomodoroPhase();
+  if((pomView||pomPhase!=='idle')&&!e.ctrlKey&&!e.metaKey&&!e.altKey){
+      if(e.code==='Space'){
+        e.preventDefault();
+        if(isPomodoroPaused()){resumePomodoro();showHkHint('Продолжить');}
+        else if(isPomodoroRunning()){pausePomodoro();showHkHint('Пауза');}
+        else if(pomView){
+          const pid=getSelectedPomodoroTaskId();
+          if(pid&&startPomodoroWork(pid,false))showHkHint('Старт');
+        }
+        updatePomodoroTimerUi();
+        if(pomView)renderPomodoro();
+        refreshBoardPomodoroUi();
+        return;
+      }
+      if(e.code==='KeyR'){
+        e.preventDefault();
+        stopPomodoro();
+        renderPomodoro();
+        refreshBoardPomodoroUi();
+        showHkHint('Таймер сброшен');
+        return;
+      }
+      if(e.code==='KeyX'&&(pomPhase==='shortBreak'||pomPhase==='longBreak')){
+        e.preventDefault();
+        skipToIdle();
+        renderPomodoro();
+        refreshBoardPomodoroUi();
+        showHkHint('Перерыв пропущен');
+        return;
+      }
+      if(e.code==='KeyD'&&pomPhase==='work'&&getPomodoroTaskId()){
+        e.preventDefault();
+        toggleDone(getPomodoroTaskId());
+        showHkHint('Задача отмечена');
+        return;
+      }
+    }
     const boardActive=document.getElementById('board').classList.contains('active');
     if(boardActive&&e.code==='KeyO'&&!e.ctrlKey&&!e.metaKey&&!e.altKey){
       e.preventDefault();
@@ -462,7 +549,7 @@ function setupKeyboard(){
       showHkHint('Сортировка');
       return;
     }
-    if(e.code==='KeyH'){
+    if((e.code==='KeyH'||e.key==='h'||e.key==='H')&&!e.ctrlKey&&!e.metaKey&&!e.altKey){
       e.preventDefault();
       toggleShowCompleted();
       return;
@@ -1001,42 +1088,96 @@ function setupBoardDnD(){
   const board=document.getElementById('board');if(!board)return;
   board.ondragstart=e=>{
     const card=e.target.closest('.task-card'),col=e.target.closest('.column');
-    if(card&&!e.target.closest('.column-menu-btn')&&!e.target.closest('.sticker-add-btn')&&!e.target.closest('.sticker')&&!e.target.closest('.sub-drag-handle')){draggedTaskId=card.dataset.id;draggedColId=null;card.classList.add('dragging');e.dataTransfer.effectAllowed='move';return}
+    if(card&&!e.target.closest('.subtasks-dropdown')&&!e.target.closest('.column-menu-btn')&&!e.target.closest('.task-menu-btn')&&!e.target.closest('.sticker-add-btn')&&!e.target.closest('.sticker')){draggedTaskId=card.dataset.id;draggedColId=null;lastTaskDrop=null;lastColumnDrop=null;setDraggedTaskSlotHeight(card.offsetHeight);card.classList.add('dragging');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',card.dataset.id);return}
     if(col&&e.target.closest('.column-header')){
       if(e.target.closest('.column-menu-btn')||e.target.closest('.column-icon-btn')){e.preventDefault();return}
-      draggedColId=col.dataset.id;draggedTaskId=null;col.classList.add('dragging-col');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',draggedColId);return
+      draggedColId=col.dataset.id;draggedTaskId=null;lastTaskDrop=null;lastColumnDrop=null;col.classList.add('dragging-col');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',draggedColId);return
     }
   };
   board.ondragover=e=>{
     e.preventDefault();
-    const tl=e.target.closest('.task-list');
+    const tl=getTaskListFromEvent(e);
     if(tl&&draggedTaskId){
-      removeDropIndicator();
-      const af=getDragAfterElement(tl,e.clientY);
-      dropIndicator=document.createElement('div');
-      dropIndicator.className='drop-indicator';
-      if(!af)tl.appendChild(dropIndicator);
-      else tl.insertBefore(dropIndicator,af);
-    }
+      const pos=resolveTaskDrop(tl,e.clientY);
+      lastTaskDrop={colId:tl.dataset.column,index:pos.index};
+      renderTaskDropSlot(tl,pos);
+    }else if(draggedTaskId)clearTaskDropSlot();
     if(draggedColId){
-      const over=e.target.closest('.column'),all=document.querySelectorAll('#board .column');
-      if(over&&over.dataset.id!==draggedColId){
-        all.forEach(c=>{if(c!==over)c.classList.remove('drag-over-col')});
-        over.classList.add('drag-over-col');
-      }else{
-        all.forEach(c=>c.classList.remove('drag-over-col'));
-      }
+      const pos=resolveColumnDrop(board,e.clientX,draggedColId);
+      lastColumnDrop={index:pos.index,beforeId:pos.beforeCol?.dataset?.id||null};
+      renderColumnDropUi(board,pos,draggedColId);
     }
   };
-  board.ondragleave=e=>{const col=e.target.closest('.column');if(col&&!col.contains(e.relatedTarget))col.classList.remove('drag-over-col');const tl=e.target.closest('.task-list');if(tl&&!tl.contains(e.relatedTarget))removeDropIndicator()};
-  board.ondrop=e=>{e.preventDefault();removeDropIndicator();document.querySelectorAll('.column,.task-card').forEach(c=>c.classList.remove('dragging-col','drag-over-col','dragging'));
-    const targetColEl=e.target.closest('.column');
-    if(targetColEl&&draggedColId&&draggedColId!==targetColEl.dataset.id){const from=state.columns.findIndex(c=>c.id===draggedColId),to=state.columns.findIndex(c=>c.id===targetColEl.dataset.id);if(from>-1&&to>-1){pushHistory();const[m]=state.columns.splice(from,1);state.columns.splice(to,0,m);saveStateNoHistory();renderBoard()}draggedColId=null;return}
-    const tl=e.target.closest('.task-list');if(tl&&draggedTaskId){const tColId=tl.dataset.column,afEl=getDragAfterElement(tl,e.clientY);let task=null;for(const c of state.columns){const i=c.tasks.findIndex(t=>t.id===draggedTaskId);if(i!==-1){task=c.tasks.splice(i,1)[0];break}}if(task){const tc=state.columns.find(c=>c.id===tColId);if(tc){const nt=tc.tasks.filter(t=>t.id!==draggedTaskId);let idx=nt.length;if(afEl){const ai=nt.findIndex(t=>t.id===afEl.dataset.id);if(ai!==-1)idx=ai}nt.splice(idx,0,task);tc.tasks=nt}}saveStateNoHistory();renderBoard();draggedTaskId=null}};
-  board.ondragend=()=>{removeDropIndicator();document.querySelectorAll('.column,.task-card').forEach(c=>c.classList.remove('dragging-col','drag-over-col','dragging'));draggedTaskId=null;draggedColId=null};
+  board.ondragleave=e=>{
+    if(!board.contains(e.relatedTarget))clearAllDropUi();
+  };
+  board.ondrop=e=>{
+    e.preventDefault();
+    clearAllDropUi();
+    document.querySelectorAll('.column,.task-card').forEach(c=>c.classList.remove('dragging-col','drag-over-col','dragging'));
+    if(draggedColId&&lastColumnDrop){
+      const from=state.columns.findIndex(c=>c.id===draggedColId);
+      let to=lastColumnDrop.beforeId
+        ?state.columns.findIndex(c=>c.id===lastColumnDrop.beforeId)
+        :state.columns.length;
+      if(to<0)to=state.columns.length;
+      if(from>-1&&from<to)to-=1;
+      if(from>-1&&to>=0&&from!==to){
+        pushHistory();
+        const[m]=state.columns.splice(from,1);
+        state.columns.splice(to,0,m);
+        saveStateNoHistory();
+        renderBoard();
+      }
+      draggedColId=null;lastColumnDrop=null;lastTaskDrop=null;draggedTaskId=null;return;
+    }
+    const tl=getTaskListFromEvent(e);
+    if(tl&&draggedTaskId&&lastTaskDrop&&lastTaskDrop.colId===tl.dataset.column){
+      pushHistory();
+      let task=null;let fromColId=null;let fromIdx=-1;
+      for(const c of state.columns){
+        const i=c.tasks.findIndex(t=>t.id===draggedTaskId);
+        if(i!==-1){fromColId=c.id;fromIdx=i;task=c.tasks.splice(i,1)[0];break}
+      }
+      if(task){
+        const tc=state.columns.find(c=>c.id===lastTaskDrop.colId);
+        if(tc){
+          let idx=lastTaskDrop.index;
+          if(fromColId===tc.id&&fromIdx<idx)idx-=1;
+          idx=Math.max(0,Math.min(idx,tc.tasks.length));
+          tc.tasks.splice(idx,0,task);
+        }
+        saveStateNoHistory();renderBoard();
+      }
+      draggedTaskId=null;lastTaskDrop=null;return;
+    }
+    if(tl&&draggedTaskId){
+      pushHistory();
+      let task=null;let fromColId=null;let fromIdx=-1;
+      for(const c of state.columns){
+        const i=c.tasks.findIndex(t=>t.id===draggedTaskId);
+        if(i!==-1){fromColId=c.id;fromIdx=i;task=c.tasks.splice(i,1)[0];break}
+      }
+      if(task){
+        const tc=state.columns.find(c=>c.id===tl.dataset.column);
+        if(tc){
+          const pos=resolveTaskDrop(tl,e.clientY);
+          let idx=pos.index;
+          if(fromColId===tc.id&&fromIdx<idx)idx-=1;
+          tc.tasks.splice(Math.max(0,Math.min(idx,tc.tasks.length)),0,task);
+          saveStateNoHistory();renderBoard();
+        }
+      }
+    }
+    draggedTaskId=null;draggedColId=null;lastTaskDrop=null;lastColumnDrop=null;
+  };
+  board.ondragend=()=>{
+    clearAllDropUi();
+    document.querySelectorAll('.column,.task-card').forEach(c=>c.classList.remove('dragging-col','drag-over-col','dragging'));
+    document.querySelectorAll('.subtask-row').forEach(r=>r.classList.remove('sub-dragging','sub-drag-over'));
+    draggedTaskId=null;draggedColId=null;draggedSubIdx=null;draggedSubTaskId=null;lastTaskDrop=null;lastColumnDrop=null;
+  };
 }
-function getDragAfterElement(container,y){const cards=[...container.querySelectorAll('.task-card:not(.dragging)')];return cards.reduce((closest,child)=>{const box=child.getBoundingClientRect(),offset=y-box.top-box.height/2;return offset<0&&offset>closest.offset?{offset,element:child}:closest},{offset:Number.NEGATIVE_INFINITY}).element}
-function removeDropIndicator(){if(dropIndicator?.parentNode)dropIndicator.parentNode.removeChild(dropIndicator);dropIndicator=null}
 
 // ─── DnD Calendar ─────────────────────────────────────────────────────
 function setupCalendarDnD(){const cal=document.getElementById('calendar');if(!cal)return;cal.ondragstart=e=>{const mini=e.target.closest('.day-task-mini');if(mini){draggedCalTaskId=mini.dataset.id;e.dataTransfer.effectAllowed='move';e.stopPropagation()}};cal.ondragover=e=>{const day=e.target.closest('.calendar-day');if(day&&draggedCalTaskId&&!day.classList.contains('empty')){e.preventDefault();day.classList.add('drag-over-day')}};cal.ondragleave=e=>{const day=e.target.closest('.calendar-day');if(day)day.classList.remove('drag-over-day')};cal.ondrop=e=>{e.preventDefault();const day=e.target.closest('.calendar-day');document.querySelectorAll('.calendar-day').forEach(d=>d.classList.remove('drag-over-day'));if(day&&draggedCalTaskId){const ds=day.dataset.date;if(ds){const t=findTask(draggedCalTaskId);if(t){pushHistory();const tail=t.deadline?.includes('T')?t.deadline.slice(t.deadline.indexOf('T')):repeatDeadlineTimeTail(t);t.deadline=ds+tail;if(t.repeat&&t.repeat.unit!=='weekdays')t.repeat.start=ds;saveStateNoHistory();renderCalendar();renderBoard()}}}draggedCalTaskId=null};cal.ondragend=()=>{document.querySelectorAll('.calendar-day').forEach(d=>d.classList.remove('drag-over-day'));draggedCalTaskId=null}}
@@ -1086,6 +1227,7 @@ window.toggleGlobalSortMenu=function(e){
   const m=document.createElement('div');
   m.className='fixed-menu';
   m.dataset.globalSort='1';
+  bindFixedMenuShell(m);
   m.innerHTML=sortMenuSectionHtml(mode=>`sortBoard('${mode}')`);
   document.body.appendChild(m);
   positionHeaderDropdown(m,btn);
@@ -1099,20 +1241,40 @@ window.sortBoard=function(by){
   closeMenu();
   showHkHint(sortModeHint(by));
 }
-window.openColMenu=function(e,colId){e.stopPropagation();closeMenu();const cid=escapeAttr(colId);const rect=e.target.getBoundingClientRect();const packMenuIco=`<img class="ico mi-ico col-menu-pack-ico" src="${packIconUrl('cog.svg')}" alt="" decoding="async"/>`;const m=document.createElement('div');m.className='fixed-menu';m.innerHTML=`<div class="menu-item menu-item-rich" onclick="openColumnStyleModal('${cid}')">${packMenuIco}Иконка и цвет…</div><div class="menu-item" onclick="renameCol('${cid}')">Переименовать</div><div class="menu-sep"></div>${sortMenuSectionHtml(mode=>`sortCol('${cid}','${mode}')`)}<div class="menu-sep"></div><div class="menu-item" style="color:var(--danger)" onclick="delCol('${cid}')">Удалить</div>`;placeMenu(m,rect);document.body.appendChild(m);activeMenu=m}
+window.openColMenu=function(e,colId){e.stopPropagation();closeMenu();const cid=escapeAttr(colId);const rect=e.target.getBoundingClientRect();const packMenuIco=`<img class="ico mi-ico col-menu-pack-ico" src="${packIconUrl('cog.svg')}" alt="" decoding="async"/>`;const m=document.createElement('div');m.className='fixed-menu';bindFixedMenuShell(m);m.innerHTML=`<div class="menu-item menu-item-rich" onclick="openColumnStyleModal('${cid}')">${packMenuIco}Иконка и цвет…</div><div class="menu-item" onclick="renameCol('${cid}')">Переименовать</div><div class="menu-sep"></div>${sortMenuSectionHtml(mode=>`sortCol('${cid}','${mode}')`)}<div class="menu-sep"></div><div class="menu-item" style="color:var(--danger)" onclick="delCol('${cid}')">Удалить</div>`;placeMenu(m,rect);document.body.appendChild(m);activeMenu=m}
+function bindFixedMenuShell(m){
+  m.addEventListener('click',e=>e.stopPropagation());
+  m.addEventListener('mousedown',e=>e.stopPropagation());
+}
 function openTaskMenu(e,id){
-  e.stopPropagation();closeMenu();const rect=e.target.getBoundingClientRect();
+  e.stopPropagation();closeMenu();
+  const anchor=e.currentTarget?.getBoundingClientRect?.()||e.target.getBoundingClientRect();
   const tid=escapeAttr(id);
   const t=findTask(id);
   const noSubs=!t?.subtasks?.length;
   const subMi=noSubs?`<div class="menu-item menu-item-rich" onclick="expandSubtasksBlock('${tid}')">${icon(icoShapes.chevronsDown,13,'ico mi-ico')}Подзадачи…</div>`:'';
   const m=document.createElement('div');m.className='fixed-menu';
-  m.innerHTML=`<div class="menu-item" onclick="openPanel('${tid}')">Редактировать</div><div class="menu-item" onclick="renameTask('${tid}')">Переименовать</div><div class="menu-item">Цвет<div class="color-picker">${['#6366f1','#8b5cf6','#ec4899','#f43f5e','#f97316','#eab308','#22c55e','#14b8a6','#3b82f6','#64748b'].map(c=>`<div class="color-circle" style="background:${c}" onclick="colorTask('${tid}','${c}')"></div>`).join('')}</div></div>${subMi}<div class="menu-sep"></div><div class="menu-item menu-item-rich" onclick="saveTaskAsTemplate('${tid}')">${icon(icoShapes.copy,14,'ico mi-ico')}В шаблон…</div><div class="menu-item menu-item-rich" onclick="moveTaskToArchive('${tid}')">${icon(icoShapes.archive,14,'ico mi-ico')}В архив</div><div class="menu-sep"></div><div class="menu-item menu-danger" onclick="delTask('${tid}')">Удалить</div>`;
-  placeMenu(m,rect);document.body.appendChild(m);activeMenu=m;
+  bindFixedMenuShell(m);
+  const editItem=document.createElement('div');
+  editItem.className='menu-item';
+  editItem.textContent='Редактировать';
+  editItem.addEventListener('click',ev=>{
+    ev.stopPropagation();
+    closeMenu();
+    openPanel(id);
+  });
+  m.appendChild(editItem);
+  m.insertAdjacentHTML('beforeend',`<div class="menu-item" onclick="renameTask('${tid}')">Переименовать</div><div class="menu-item">Цвет<div class="color-picker">${['#6366f1','#8b5cf6','#ec4899','#f43f5e','#f97316','#eab308','#22c55e','#14b8a6','#3b82f6','#64748b'].map(c=>`<div class="color-circle" style="background:${c}" onclick="colorTask('${tid}','${c}')"></div>`).join('')}</div></div>${subMi}<div class="menu-sep"></div><div class="menu-item menu-item-rich" onclick="saveTaskAsTemplate('${tid}')">${icon(icoShapes.copy,14,'ico mi-ico')}В шаблон…</div><div class="menu-item menu-item-rich" onclick="moveTaskToArchive('${tid}')">${icon(icoShapes.archive,14,'ico mi-ico')}В архив</div><div class="menu-sep"></div><div class="menu-item menu-danger" onclick="delTask('${tid}')">Удалить</div>`);
+  placeMenu(m,anchor);document.body.appendChild(m);activeMenu=m;
 }
 function placeMenu(m,rect){let l=rect.right+4,t=rect.bottom;if(l+210>window.innerWidth)l=rect.left-214;if(t+340>window.innerHeight)t=rect.top-344;m.style.left=l+'px';m.style.top=t+'px'}
 function closeMenu(){if(activeMenu){activeMenu.remove();activeMenu=null}}
-document.addEventListener('click',closeMenu)
+document.addEventListener('click',e=>{
+  if(!activeMenu)return;
+  if(activeMenu.contains(e.target))return;
+  if(e.target.closest('.task-menu-btn,.column-menu-btn,#globalSortBtn'))return;
+  closeMenu();
+})
 
 function isValidColumnIconRef(ic){
   if(!ic||typeof ic!=='string')return false;
@@ -1216,6 +1378,7 @@ function cancelTaskPanelClose(){
   if(taskPanelTransitionEnd&&p){p.removeEventListener('transitionend',taskPanelTransitionEnd);taskPanelTransitionEnd=null;}
 }
 function openPanel(id){
+  closeMenu();
   cancelTaskPanelClose();
   if(selectedTask&&selectedTask.id!==id)syncDescFromEditor();
   selectedTask=findTask(id);if(!selectedTask)return;
@@ -1230,11 +1393,14 @@ function openPanel(id){
   panelDropdowns.taskPriorityDd?.setValue(selectedTask.priority||'',false);
   panelDropdowns.taskVolumeDd?.setValue(selectedTask.volume||'',false);
   const pomN=normalizePomodoro(selectedTask.pomodoro);
-  document.getElementById('pomCount').value=hasPomodoro(selectedTask)?String(pomN.count):'';
-  document.getElementById('pomDur').value=hasPomodoro(selectedTask)?String(pomN.val):'';
-  panelDropdowns.pomUnitDd?.setValue(pomN.unit||'min',false);
+  document.getElementById('pomCount').value=pomN?String(pomN.count):'';
+  document.getElementById('pomDur').value=pomN?String(pomN.val):'';
+  panelDropdowns.pomUnitDd?.setValue(pomN?.unit||'min',false);
   const pomStartBtn=document.getElementById('panelPomStartBtn');
-  if(pomStartBtn)pomStartBtn.disabled=!hasPomodoro(selectedTask);
+  if(pomStartBtn){
+    pomStartBtn.disabled=!hasPomodoro(selectedTask);
+    pomStartBtn.onclick=()=>{if(selectedTask&&hasPomodoro(selectedTask))launchPomodoroForTask(selectedTask.id)};
+  }
   fillPanelRepeatUi(selectedTask.repeat);
   setRepeatCaptionUi(selectedTask);
   const tp=document.getElementById('taskPanel');
@@ -1262,12 +1428,13 @@ function openPanel(id){
   const bindPomInp=(el,maxLen)=>{if(!el)return;el.oninput=()=>{el.value=String(el.value||'').replace(/\D+/g,'').slice(0,maxLen);if(selectedTask){if(!pomChanged){pushHistory();pomChanged=true}applyPanelPomodoroFromInputs();const btn=document.getElementById('panelPomStartBtn');if(btn)btn.disabled=!hasPomodoro(selectedTask);saveStateNoHistory();renderBoard();renderPomodoro()}}};
   bindPomInp(document.getElementById('pomCount'),2);
   bindPomInp(document.getElementById('pomDur'),3);
-  document.getElementById('panelPomStartBtn')?.addEventListener('click',()=>{if(selectedTask&&hasPomodoro(selectedTask))launchPomodoroForTask(selectedTask.id)});
   document.getElementById('panelRepeatEvery').oninput=e=>{e.target.value=String(e.target.value||'').replace(/\D+/g,'').slice(0,3);};
   document.getElementById('panelRepeatSaveBtn').onclick=savePanelRepeat;
   document.getElementById('panelRepeatClearBtn').onclick=clearPanelRepeat;
 }
 function finishTaskPanelClose(){
+  const p=document.getElementById('taskPanel');
+  if(p?.classList.contains('open'))return;
   syncDescFromEditor();
   descEditorPushedHistory=false;
   selectedTask=null;
@@ -1701,9 +1868,70 @@ function saveTaskAsTemplate(id){
   });
 }
 
+function formatSoundLabel(filePath){
+  if(!filePath)return '—';
+  const parts=String(filePath).replace(/\\/g,'/').split('/');
+  return parts[parts.length-1]||filePath;
+}
+const APP_SOUND_SETTING_KEYS={
+  work:'pomSoundWorkEnd',
+  break:'pomSoundBreakEnd',
+  deadline:'deadlineReminderSound'
+};
+function syncAppSoundLabels(){
+  const s=state.appSettings||{};
+  const w=document.getElementById('setPomSoundWorkLabel');
+  const b=document.getElementById('setPomSoundBreakLabel');
+  const d=document.getElementById('setDeadlineSoundLabel');
+  if(w)w.textContent=formatSoundLabel(s.pomSoundWorkEnd);
+  if(b)b.textContent=formatSoundLabel(s.pomSoundBreakEnd);
+  if(d)d.textContent=formatSoundLabel(s.deadlineReminderSound);
+}
+async function pickAppSound(slot){
+  const api=window.electronAPI;
+  if(!api?.pickSoundFile){
+    showHkHint('Запустите приложение через npm start (Electron)');
+    return;
+  }
+  const settingKey=APP_SOUND_SETTING_KEYS[slot];
+  if(!settingKey)return;
+  const settingsEl=document.getElementById('settingsModal');
+  const settingsWasOpen=!!settingsEl?.classList.contains('open');
+  if(settingsWasOpen)settingsEl.classList.remove('open');
+  let dest;
+  try{
+    dest=await api.pickSoundFile(slot);
+  }catch(err){
+    console.error('pickAppSound',err);
+    showHkHint('Не удалось открыть выбор файла');
+    return;
+  }finally{
+    if(settingsWasOpen)settingsEl?.classList.add('open');
+  }
+  if(!dest)return;
+  if(dest&&typeof dest==='object'&&dest.error){
+    showHkHint(`Ошибка: ${dest.error}`);
+    return;
+  }
+  if(typeof dest!=='string')return;
+  if(!state.appSettings)state.appSettings={};
+  state.appSettings[settingKey]=dest;
+  saveStateNoHistory();
+  syncAppSoundLabels();
+  showHkHint('Файл выбран');
+}
+function clearAppSound(slot){
+  const settingKey=APP_SOUND_SETTING_KEYS[slot];
+  if(!settingKey)return;
+  if(!state.appSettings)state.appSettings={};
+  delete state.appSettings[settingKey];
+  saveStateNoHistory();
+  syncAppSoundLabels();
+}
 function openSettings(){
   const s=state.appSettings;
   void window.__kanbanCloud?.populateCloudSettingsFields();
+  syncAppSoundLabels();
   const tray=document.getElementById('setCloseTray');if(tray)tray.checked=s.closeToTray!==false;
   const flash=document.getElementById('setSaveFlash');if(flash)flash.checked=s.showSaveFlash!==false;
   const cf=document.getElementById('setCalBoardFilt');if(cf)cf.checked=s.calendarUseBoardFilters!==false;
@@ -1713,6 +1941,7 @@ function openSettings(){
   const pab=document.getElementById('setPomAutoBreak');if(pab)pab.checked=!!s.pomAutoStartBreak;
   const pan=document.getElementById('setPomAutoNext');if(pan)pan.checked=!!s.pomAutoStartNext;
   const pbf=document.getElementById('setPomBoardFilt');if(pbf)pbf.checked=s.pomUseBoardFilters!==false;
+  const pvol=document.getElementById('setPomSoundVol');if(pvol)pvol.value=String(Math.round((Number(s.pomSoundVolume)??0.85)*100));
   document.getElementById('settingsModal')?.classList.add('open');
 }
 function closeSettings(){document.getElementById('settingsModal')?.classList.remove('open')}
@@ -1727,6 +1956,8 @@ function applySettings(){
   state.appSettings.pomAutoStartBreak=!!document.getElementById('setPomAutoBreak')?.checked;
   state.appSettings.pomAutoStartNext=!!document.getElementById('setPomAutoNext')?.checked;
   state.appSettings.pomUseBoardFilters=!!document.getElementById('setPomBoardFilt')?.checked;
+  const volRaw=parseInt(document.getElementById('setPomSoundVol')?.value,10);
+  state.appSettings.pomSoundVolume=Math.min(1,Math.max(0,(Number.isFinite(volRaw)?volRaw:85)/100));
   state.appSettings.cloudAutoSync=window.__kanbanCloud?.readCloudAutoSyncFromForm?.() ?? !!document.getElementById('setCloudAutoSync')?.checked;
   saveStateNoHistory();
   if(window.electronAPI?.setCloseBehavior)void window.electronAPI.setCloseBehavior(!!state.appSettings.closeToTray);
@@ -1738,6 +1969,6 @@ function applySettings(){
 Object.assign(window,{
   undo,redo,toggleTheme,openRegistry,closeRegistry,closeTaskPanel,collapseTaskPanel,openRepeatModal,exportProject,
   modalOk,modalCancel,setCalView,closeRepeatModal,clearRepeat,saveRepeat,openPanel,expandSubtasksBlock,calNav,
-  openArchive,closeArchive,openTemplates,closeTemplates,openSettings,closeSettings,applySettings,
+  openArchive,closeArchive,openTemplates,closeTemplates,openSettings,closeSettings,applySettings,pickAppSound,clearAppSound,
   moveTaskToArchive,saveTaskAsTemplate,openColumnStyleModal,closeColumnStyleModal,applyColumnStyle,launchPomodoroForTask
 });

@@ -471,7 +471,6 @@ function showCalInlineAdd(container) {
       expanded: false,
       repeat: null,
       volume: '',
-      pomodoro: {},
       description: ''
     };
     if (targetCol) targetCol.tasks.unshift(newTask);

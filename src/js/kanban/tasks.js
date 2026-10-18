@@ -4,6 +4,7 @@ import { pushHistory } from './history.js';
 import { isRepeatConfigured, findNextWeekdayOccurrence, repeatDeadlineTimeTail, localISODate } from './repeat-logic.js';
 import { run } from './runtime.js';
 import { onTaskRemovedFromActive } from './pomodoro-hooks.js';
+import { resortColumnTasksIfNeeded } from './task-sort.js';
 
 export { findTask } from './task-find.js';
 
@@ -69,6 +70,7 @@ export function createNextIteration(task, col) {
   /** Связка с родителем: при возвратe из «Выполнено» без этой связи остаются лишние копии. */
   next._spawnedFromTaskId = task.id;
   col.tasks.unshift(next);
+  resortColumnTasksIfNeeded(col);
 }
 
 export function toggleDone(id) {
@@ -90,6 +92,7 @@ export function toggleDone(id) {
       col.tasks = col.tasks.filter((nt) => nt._spawnedFromTaskId !== t.id);
       col.completed = col.completed.filter((nt) => nt._spawnedFromTaskId !== t.id);
       col.tasks.unshift(t);
+      resortColumnTasksIfNeeded(col);
     }
   });
   saveStateNoHistory();

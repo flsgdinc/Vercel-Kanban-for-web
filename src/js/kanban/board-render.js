@@ -1,9 +1,30 @@
 import { deps as d } from './deps.js';
 import { escapeHtml, escapeAttr } from '../html-escape.js';
+import { showCompleted } from './filters.js';
+import {
+  clearSubDropSlot,
+  renderSubtaskDropSlot,
+  resolveSubtaskDrop,
+  setDraggedSubSlotHeight
+} from './dnd-ui.js';
+import { refreshBoardPomodoroUi } from './pomodoro-timer.js';
+
+/** @type {{ taskId: string, fromIdx: number, toIdx: number } | null} */
+let lastSubtaskDrop = null;
+/** Колонка с открытым inline-добавлением — переживает renderBoard */
+let pendingInlineColId = null;
 
 export function renderBoard() {
   const board = document.getElementById('board');
   if (!board) return;
+
+  const scrollTops = new Map();
+  board.querySelectorAll('.column').forEach((col) => {
+    const tc = col.querySelector('.tasks-container');
+    if (tc) scrollTops.set(col.dataset.id, tc.scrollTop);
+  });
+  const reopenInline = pendingInlineColId;
+
   d.ensureFocusedColumn();
   board.innerHTML = '';
   d.state.columns.forEach((col) => board.appendChild(makeColumn(col)));
@@ -16,6 +37,15 @@ export function renderBoard() {
   btn.onclick = d.addColumn;
   w.appendChild(btn);
   board.appendChild(w);
+
+  scrollTops.forEach((top, colId) => {
+    const tc = board.querySelector(`.column[data-id="${colId}"] .tasks-container`);
+    if (tc) tc.scrollTop = top;
+  });
+  if (reopenInline) {
+    requestAnimationFrame(() => addInlineTop(reopenInline));
+  }
+  refreshBoardPomodoroUi();
 }
 
 function makeColumn(col) {
@@ -36,7 +66,10 @@ function makeColumn(col) {
   addTop.type = 'button';
   addTop.className = 'add-task-btn-top';
   addTop.innerHTML = `${d.icon(d.icoShapes.plus, 14, 'ico')}Добавить задачу`;
-  addTop.onclick = () => addInlineTop(col.id);
+  addTop.onclick = (e) => {
+    e.stopPropagation();
+    addInlineTop(col.id);
+  };
   inner.appendChild(addTop);
   const tc2 = document.createElement('div');
   tc2.className = 'tasks-container';
@@ -50,14 +83,14 @@ function makeColumn(col) {
     if (!d.matchesFilter(t)) card.classList.add('hidden');
     al.appendChild(card);
   });
-  if (!col.tasks.length && !(d.showCompleted && col.completed?.length)) {
+  if (!col.tasks.length && !(showCompleted && col.completed?.length)) {
     const empty = document.createElement('div');
     empty.className = 'col-empty-hint';
     empty.innerHTML = '<p>Пока пусто</p><span>Перетащите карточку сюда или нажмите «Добавить задачу»</span>';
     al.appendChild(empty);
   }
   tinner.appendChild(al);
-  if (d.showCompleted && col.completed.length > 0) {
+  if (showCompleted && col.completed.length > 0) {
     const cs = document.createElement('div');
     cs.className = 'completed-section';
     const ch = document.createElement('div');
@@ -212,6 +245,7 @@ function makeCard(task) {
   mb.className = 'task-menu-btn';
   mb.setAttribute('aria-label', 'Меню');
   mb.innerHTML = d.icon(d.icoShapes.moreH, 16, 'ico');
+  mb.addEventListener('mousedown', (e) => e.stopPropagation());
   mb.addEventListener('click', (e) => {
     e.stopPropagation();
     d.openTaskMenu(e, task.id);
@@ -232,7 +266,6 @@ function makeCard(task) {
       const dropEl = card.querySelector('.subtasks-dropdown');
       if (dropEl) dropEl.className = 'subtasks-dropdown' + (task.expanded ? ' open' : '');
     }
-    d.openPanel(task.id);
   });
   card.appendChild(row);
 
@@ -244,13 +277,29 @@ function makeCard(task) {
   sub.forEach((st, idx) => {
     const r2 = document.createElement('div');
     r2.className = 'subtask-row';
-    r2.draggable = true;
     r2.dataset.idx = idx;
     const handle = document.createElement('span');
     handle.className = 'sub-drag-handle';
+    handle.draggable = true;
     handle.title = 'Перетащить для смены порядка';
     handle.innerHTML = d.icon(d.icoShapes.grip, 12, 'ico');
     handle.addEventListener('mousedown', (e) => e.stopPropagation());
+    handle.addEventListener('dragstart', (e) => {
+      e.stopPropagation();
+      d.setDraggedSub(idx, task.id);
+      lastSubtaskDrop = { taskId: task.id, fromIdx: idx, toIdx: idx };
+      setDraggedSubSlotHeight(r2.offsetHeight);
+      r2.classList.add('sub-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', `${task.id}:${idx}`);
+    });
+    handle.addEventListener('dragend', (e) => {
+      e.stopPropagation();
+      r2.classList.remove('sub-dragging');
+      clearSubDropSlot();
+      d.clearDraggedSub();
+      lastSubtaskDrop = null;
+    });
     r2.appendChild(handle);
     const sc = document.createElement('div');
     sc.className = 'sub-checkbox' + (st.done ? ' checked' : '');
@@ -295,46 +344,43 @@ function makeCard(task) {
     r2.appendChild(sc);
     r2.appendChild(sp);
     r2.appendChild(delBtn);
-    r2.addEventListener('dragstart', (e) => {
-      if (!e.target.closest('.sub-drag-handle')) {
-        e.preventDefault();
-        return;
-      }
-      e.stopPropagation();
-      d.setDraggedSub(idx, task.id);
-      r2.classList.add('sub-dragging');
-      e.dataTransfer.effectAllowed = 'move';
-    });
-    r2.addEventListener('dragend', (e) => {
-      e.stopPropagation();
-      r2.classList.remove('sub-dragging');
-      document.querySelectorAll('.subtask-row').forEach((r) => r.classList.remove('sub-drag-over'));
-    });
-    r2.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const { draggedSubIdx, draggedSubTaskId } = d.getDraggedSub();
-      if (draggedSubTaskId === task.id && draggedSubIdx !== idx) {
-        document.querySelectorAll('.subtask-row').forEach((r) => r.classList.remove('sub-drag-over'));
-        r2.classList.add('sub-drag-over');
-      }
-    });
-    r2.addEventListener('drop', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      r2.classList.remove('sub-drag-over');
-      const { draggedSubIdx, draggedSubTaskId } = d.getDraggedSub();
-      if (draggedSubTaskId === task.id && draggedSubIdx !== null && draggedSubIdx !== idx) {
-        d.pushHistory();
-        const subs = task.subtasks;
-        const [moved] = subs.splice(draggedSubIdx, 1);
-        subs.splice(idx, 0, moved);
-        d.saveStateNoHistory();
-        renderBoard();
-      }
-      d.clearDraggedSub();
-    });
     drop.appendChild(r2);
+  });
+  drop.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const { draggedSubIdx, draggedSubTaskId } = d.getDraggedSub();
+    if (draggedSubTaskId !== task.id || draggedSubIdx === null) return;
+    const pos = resolveSubtaskDrop(drop, e.clientY);
+    lastSubtaskDrop = { taskId: task.id, fromIdx: draggedSubIdx, toIdx: pos.index };
+    renderSubtaskDropSlot(drop, pos);
+  });
+  drop.addEventListener('dragleave', (e) => {
+    if (!drop.contains(e.relatedTarget)) clearSubDropSlot();
+  });
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    clearSubDropSlot();
+    const { draggedSubIdx, draggedSubTaskId } = d.getDraggedSub();
+    const target = lastSubtaskDrop;
+    if (
+      draggedSubTaskId === task.id &&
+      draggedSubIdx !== null &&
+      target?.taskId === task.id &&
+      target.fromIdx !== target.toIdx
+    ) {
+      d.pushHistory();
+      const subs = task.subtasks;
+      let toIdx = target.toIdx;
+      if (target.fromIdx < toIdx) toIdx -= 1;
+      const [moved] = subs.splice(target.fromIdx, 1);
+      subs.splice(toIdx, 0, moved);
+      d.saveStateNoHistory();
+      renderBoard();
+    }
+    d.clearDraggedSub();
+    lastSubtaskDrop = null;
   });
   const ar = document.createElement('div');
   ar.className = 'add-subtask-inline';
@@ -380,10 +426,10 @@ export function expandSubtasksBlock(id) {
   t.expanded = true;
   d.saveStateNoHistory();
   renderBoard();
-  requestAnimationFrame(() => d.openPanel(id));
 }
 
 export function addInlineTop(colId) {
+  pendingInlineColId = colId;
   const colEl = document.querySelector(`.column[data-id="${colId}"]`);
   if (!colEl || colEl.querySelector('.add-task-inline')) return;
   const addBtn = colEl.querySelector('.add-task-btn-top');
@@ -394,10 +440,14 @@ export function addInlineTop(colId) {
   addBtn.style.display = 'none';
   const inp = inline.querySelector('input');
   inp.focus();
-  const commit = () => {
-    const v = inp.value.trim();
+  const finishInline = () => {
+    pendingInlineColId = null;
     inline.remove();
     addBtn.style.display = 'flex';
+  };
+  const commit = () => {
+    const v = inp.value.trim();
+    finishInline();
     if (v) {
       d.pushHistory();
       const col = d.state.columns.find((c) => c.id === colId);
@@ -414,7 +464,6 @@ export function addInlineTop(colId) {
           expanded: false,
           repeat: null,
           volume: '',
-          pomodoro: {},
           description: ''
         };
         col.tasks.unshift(newTask);
@@ -428,10 +477,7 @@ export function addInlineTop(colId) {
     }
   };
   inline.querySelector('button:first-of-type').onclick = commit;
-  inline.querySelector('.cancel-btn').onclick = () => {
-    inline.remove();
-    addBtn.style.display = 'flex';
-  };
+  inline.querySelector('.cancel-btn').onclick = finishInline;
   inp.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') commit();
     if (e.key === 'Escape') {

@@ -37,7 +37,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   supabaseLoadConfig: () => ipcRenderer.invoke('supabase-load-config'),
   supabaseSaveConfig: (config) => ipcRenderer.invoke('supabase-save-config', config),
   supabaseLoadSession: () => ipcRenderer.invoke('supabase-load-session'),
-  supabaseSaveSession: (session) => ipcRenderer.invoke('supabase-save-session', session)
+  supabaseSaveSession: (session) => ipcRenderer.invoke('supabase-save-session', session),
+
+  /** slot: 'work' | 'break' | 'deadline' — копирует mp3/wav в профиль, возвращает путь */
+  pickSoundFile: (slot) => ipcRenderer.invoke('pick-sound-file', { slot }),
+
+  /** Подписка на остановку звука оповещения (клик по toast / фокус окна). Возвращает функцию отписки. */
+  onStopNotificationSounds: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const handler = () => callback();
+    ipcRenderer.on('stop-notification-sounds', handler);
+    return () => ipcRenderer.removeListener('stop-notification-sounds', handler);
+  }
 });
 
 // Защита от инъекций

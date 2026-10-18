@@ -9,6 +9,9 @@ import {
   todayDateStr
 } from './pomodoro-utils.js';
 import { incrementPomodoroGlobal, ensurePomodoroState } from './pomodoro-queue.js';
+import { schedulePomodoroPersist, flushPomodoroPersist } from './pomodoro-session.js';
+import { playPomodoroSound } from './pomodoro-sounds.js';
+import { showAppNotification } from './app-notify.js';
 
 /** @type {'idle'|'work'|'shortBreak'|'longBreak'} */
 let phase = 'idle';
@@ -27,7 +30,22 @@ export function onPomodoroTick(fn) {
   return () => listeners.delete(fn);
 }
 
+function exportSession() {
+  if (phase === 'idle') return null;
+  return {
+    phase,
+    taskId: taskId || null,
+    endsAt: endsAt ?? null,
+    pausedRemainingMs: pausedRemainingMs ?? null
+  };
+}
+
+function persistSoon() {
+  schedulePomodoroPersist(exportSession);
+}
+
 function emit() {
+  persistSoon();
   listeners.forEach((fn) => {
     try {
       fn();
@@ -35,6 +53,65 @@ function emit() {
       console.error(e);
     }
   });
+}
+
+export function refreshBoardPomodoroUi() {
+  const activeId = getPomodoroTaskId();
+  const ph = getPomodoroPhase();
+  const live = activeId && ph !== 'idle';
+  const digits = live ? getTimerDisplay() : '';
+  document.querySelectorAll('#board .task-card').forEach((card) => {
+    const isActive = live && card.dataset.id === activeId;
+    card.classList.toggle('pom-timer-active', isActive);
+    const pomSpan = card.querySelector('.sticker.pom span:last-child');
+    if (!pomSpan) return;
+    if (isActive) {
+      if (!pomSpan.dataset.pomOrig) pomSpan.dataset.pomOrig = pomSpan.textContent || '';
+      pomSpan.textContent = digits;
+    } else if (pomSpan.dataset.pomOrig != null) {
+      pomSpan.textContent = pomSpan.dataset.pomOrig;
+      delete pomSpan.dataset.pomOrig;
+    }
+  });
+}
+
+/**
+ * @param {object | null} session — from state.pomodoroSession
+ * @param {{ onExpired?: () => void }} [opts]
+ */
+export function restorePomodoroSession(session, opts = {}) {
+  if (!session?.phase || session.phase === 'idle') {
+    stopPomodoro();
+    return;
+  }
+  const now = Date.now();
+  if (session.pausedRemainingMs != null && session.pausedRemainingMs > 0) {
+    phase = session.phase;
+    taskId = session.taskId || null;
+    pausedRemainingMs = session.pausedRemainingMs;
+    endsAt = null;
+    ensureTick();
+    emit();
+    refreshBoardPomodoroUi();
+    return;
+  }
+  if (session.endsAt && session.endsAt > now) {
+    phase = session.phase;
+    taskId = session.taskId || null;
+    endsAt = session.endsAt;
+    pausedRemainingMs = null;
+    ensureTick();
+    emit();
+    refreshBoardPomodoroUi();
+    return;
+  }
+  phase = session.phase;
+  taskId = session.taskId || null;
+  endsAt = session.endsAt || now;
+  pausedRemainingMs = null;
+  if (phase === 'work') completeWorkSession();
+  else if (phase === 'shortBreak' || phase === 'longBreak') completeBreakSession();
+  opts.onExpired?.();
 }
 
 export function getPomodoroPhase() {
@@ -85,6 +162,7 @@ function startPhase(nextPhase, durationMs, tid) {
   pausedRemainingMs = null;
   ensureTick();
   emit();
+  refreshBoardPomodoroUi();
 }
 
 export function stopPomodoro() {
@@ -93,6 +171,8 @@ export function stopPomodoro() {
   endsAt = null;
   pausedRemainingMs = null;
   emit();
+  flushPomodoroPersist(exportSession);
+  refreshBoardPomodoroUi();
 }
 
 export function pausePomodoro() {
@@ -184,11 +264,9 @@ function notifyPhaseEnd(endedPhase, task, extra = {}) {
   if (endedPhase === 'work' && extra.suggestBreak) {
     body = body ? `${body} — время перерыва` : 'Время перерыва';
   }
-  if (window.electronAPI?.showNotification) {
-    void window.electronAPI.showNotification({ title, body: body || title });
-  } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-    new Notification(title, { body: body || undefined });
-  }
+  showAppNotification({ title, body: body || title, sound: 'none' });
+  if (endedPhase === 'work') playPomodoroSound('workEnd', state.appSettings);
+  else playPomodoroSound('breakEnd', state.appSettings);
   pomHint(title);
 }
 

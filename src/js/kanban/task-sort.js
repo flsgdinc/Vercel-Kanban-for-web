@@ -70,6 +70,13 @@ export function sortAllColumns(columns, mode) {
   columns.forEach((col) => sortColumnTasks(col, mode));
 }
 
+/** После unshift/push — сохранить порядок, если колонка не в ручном режиме. */
+export function resortColumnTasksIfNeeded(col) {
+  const mode = col?.sortBy;
+  if (!mode || mode === 'manual') return;
+  sortTaskList(col.tasks, mode);
+}
+
 export const SORT_MENU_ITEMS = [
   ['priority', 'По приоритету'],
   ['deadline', 'По дедлайну'],

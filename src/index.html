@@ -174,6 +174,12 @@
     <div class="set-opt-row"><span class="set-opt-label">Автостарт перерыва после работы</span><label class="set-switch"><input type="checkbox" id="setPomAutoBreak"/><span class="set-switch-ui" aria-hidden="true"></span></label></div>
     <div class="set-opt-row"><span class="set-opt-label">Автостарт следующей задачи из очереди</span><label class="set-switch"><input type="checkbox" id="setPomAutoNext"/><span class="set-switch-ui" aria-hidden="true"></span></label></div>
     <div class="set-opt-row"><span class="set-opt-label">В помодоро учитывать поиск и фильтры доски</span><label class="set-switch"><input type="checkbox" id="setPomBoardFilt"/><span class="set-switch-ui" aria-hidden="true"></span></label></div>
+    <div class="set-opt-row set-opt-row-num"><span class="set-opt-label">Громкость звуков (0–100)</span><input type="number" id="setPomSoundVol" min="0" max="100" class="set-num-input"/></div>
+    <div class="set-sound-row"><span class="set-opt-label">Звук: конец работы</span><div class="set-sound-actions"><span class="set-sound-path" id="setPomSoundWorkLabel">—</span><button type="button" class="btn-ghost" data-app-sound-pick="work">Выбрать файл</button><button type="button" class="btn-ghost" data-app-sound-clear="work">Сброс</button></div></div>
+    <div class="set-sound-row"><span class="set-opt-label">Звук: конец перерыва</span><div class="set-sound-actions"><span class="set-sound-path" id="setPomSoundBreakLabel">—</span><button type="button" class="btn-ghost" data-app-sound-pick="break">Выбрать файл</button><button type="button" class="btn-ghost" data-app-sound-clear="break">Сброс</button></div></div>
+    <div class="set-section-label">Напоминания о дедлайне</div>
+    <p class="set-hint">При срабатывании напоминания задачи — оповещение в центре уведомлений Windows (если включены уведомления для приложения в системе).</p>
+    <div class="set-sound-row"><span class="set-opt-label">Звук напоминания</span><div class="set-sound-actions"><span class="set-sound-path" id="setDeadlineSoundLabel">—</span><button type="button" class="btn-ghost" data-app-sound-pick="deadline">Выбрать файл</button><button type="button" class="btn-ghost" data-app-sound-clear="deadline">Сброс</button></div></div>
     <div class="set-section-label">Облако (Supabase)</div>
     <p class="cloud-hint">Ключи хранятся локально в профиле приложения. В Supabase выполните миграцию <code>supabase/migrations/001_kanban_boards.sql</code>.</p>
     <div class="cloud-field"><label class="cloud-label" for="cloudSupabaseUrl">URL проекта</label><input type="url" id="cloudSupabaseUrl" class="cloud-input" placeholder="https://xxxx.supabase.co" autocomplete="off"/></div>
@@ -214,7 +220,7 @@
       <div class="hk-row"><span class="hk-desc">Фильтры</span><span class="hk-kbd">F</span></div>
       <div class="hk-row"><span class="hk-desc">Сбросить фильтры</span><span class="hk-kbd">Shift+F</span></div>
       <div class="hk-row"><span class="hk-desc">Сортировка всех колонок (на доске)</span><span class="hk-kbd">O</span></div>
-      <div class="hk-row"><span class="hk-desc">Показывать выполненные</span><span class="hk-kbd">H</span></div>
+      <div class="hk-row"><span class="hk-desc">Показать / скрыть выполненные</span><span class="hk-kbd">H</span></div>
       <div class="hk-row"><span class="hk-desc">Закрыть модальные окна / свернуть панель задачи</span><span class="hk-kbd">Esc</span></div>
     </div>
     <div class="hk-group">
@@ -225,6 +231,13 @@
       <div class="hk-row"><span class="hk-desc">Новая задача в текущей колонке</span><span class="hk-kbd">N</span></div>
       <div class="hk-row"><span class="hk-desc">Развернуть все блоки подзадач</span><span class="hk-kbd">Ctrl+Shift+]</span></div>
       <div class="hk-row"><span class="hk-desc">Свернуть все блоки подзадач</span><span class="hk-kbd">Ctrl+Shift+[</span></div>
+    </div>
+    <div class="hk-group">
+      <div class="hk-group-label">Помодоро</div>
+      <div class="hk-row"><span class="hk-desc">Старт / пауза / продолжить</span><span class="hk-kbd">Space</span></div>
+      <div class="hk-row"><span class="hk-desc">Сбросить таймер</span><span class="hk-kbd">R</span></div>
+      <div class="hk-row"><span class="hk-desc">Пропустить перерыв</span><span class="hk-kbd">X</span></div>
+      <div class="hk-row"><span class="hk-desc">Отметить задачу выполненной (работа)</span><span class="hk-kbd">D</span></div>
     </div>
     <div class="hk-group">
       <div class="hk-group-label">Календарь</div>

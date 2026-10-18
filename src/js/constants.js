@@ -40,7 +40,6 @@ export function createDefaultState() {
             expanded: false,
             description: '',
             volume: '',
-            pomodoro: {},
             repeat: null
           }
         ],
@@ -75,6 +74,8 @@ export function createDefaultState() {
     /** Поведение окна и мелкие флаги */
     pomodoroQueue: [],
     pomodoroDay: { date: '', globalCount: 0 },
+    /** Активный таймер (phase, taskId, endsAt, pausedRemainingMs) */
+    pomodoroSession: null,
     appSettings: {
       closeToTray: true,
       showSaveFlash: true,

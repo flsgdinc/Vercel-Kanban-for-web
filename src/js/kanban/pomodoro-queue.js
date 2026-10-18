@@ -1,5 +1,11 @@
 import { state } from '../state.js';
-import { hasPomodoro, normalizePomodoro, todayDateStr, getPomodoroSettings } from './pomodoro-utils.js';
+import {
+  hasPomodoro,
+  normalizePomodoro,
+  sanitizeTaskPomodoroField,
+  todayDateStr,
+  getPomodoroSettings
+} from './pomodoro-utils.js';
 import { findTask } from './task-find.js';
 import { matchesFilter } from './filters.js';
 
@@ -29,12 +35,15 @@ export function setTaskPomodoro(task, patch, s = state) {
   const prev = normalizePomodoro(task.pomodoro);
   const next = normalizePomodoro({ ...prev, ...patch });
   task.pomodoro = next;
+  if (next) task.pomodoroConfigured = true;
+  else delete task.pomodoroConfigured;
   if (hasPomodoro(task)) enqueuePomodoroTask(task.id, s);
   else dequeuePomodoroTask(task.id, s);
 }
 
 export function clearTaskPomodoro(task, s = state) {
-  task.pomodoro = null;          // или undefined
+  task.pomodoro = null;
+  delete task.pomodoroConfigured;
   dequeuePomodoroTask(task.id, s);
 }
 
@@ -49,7 +58,7 @@ export function syncPomodoroQueue(s = state) {
         valid.add(t.id);
         if (!s.pomodoroQueue.includes(t.id)) s.pomodoroQueue.push(t.id);
       }
-      if (t.pomodoro) t.pomodoro = normalizePomodoro(t.pomodoro);
+      sanitizeTaskPomodoroField(t);
     }
   }
   s.pomodoroQueue = s.pomodoroQueue.filter((id) => valid.has(id));

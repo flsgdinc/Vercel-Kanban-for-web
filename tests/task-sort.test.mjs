@@ -1,6 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { compareTasks, sortTaskList, sortAllColumns } from '../src/js/kanban/task-sort.js';
+import {
+  compareTasks,
+  sortTaskList,
+  sortAllColumns,
+  resortColumnTasksIfNeeded
+} from '../src/js/kanban/task-sort.js';
 
 describe('task-sort', () => {
   it('sorts by priority', () => {
@@ -27,6 +32,33 @@ describe('task-sort', () => {
     const tasks = [{ title: 'Яблоко' }, { title: 'Арбуз' }, { title: 'Банан' }];
     sortTaskList(tasks, 'name');
     assert.deepEqual(tasks.map((t) => t.title), ['Арбуз', 'Банан', 'Яблоко']);
+  });
+
+  it('resortColumnTasksIfNeeded keeps deadline order after unshift', () => {
+    const col = {
+      sortBy: 'deadline',
+      tasks: [
+        { id: '1', title: 'a', deadline: '2026-05-20T10:00' },
+        { id: '2', title: 'b', deadline: '2026-05-25T10:00' }
+      ],
+      completed: []
+    };
+    col.tasks.unshift({ id: '3', title: 'c', deadline: '2026-05-22T10:00' });
+    resortColumnTasksIfNeeded(col);
+    assert.deepEqual(
+      col.tasks.map((t) => t.id),
+      ['1', '3', '2']
+    );
+  });
+
+  it('resortColumnTasksIfNeeded skips manual sort', () => {
+    const col = {
+      sortBy: 'manual',
+      tasks: [{ id: '1', deadline: '2026-05-25' }, { id: '2', deadline: '2026-05-20' }],
+      completed: []
+    };
+    resortColumnTasksIfNeeded(col);
+    assert.deepEqual(col.tasks.map((t) => t.id), ['1', '2']);
   });
 
   it('sortAllColumns sorts every column', () => {

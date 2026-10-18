@@ -14,7 +14,6 @@ export function createMinimalTask(title) {
     expanded: false,
     description: '',
     volume: '',
-    pomodoro: {},
     repeat: null
   };
 }
