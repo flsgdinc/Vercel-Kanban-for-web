@@ -12,6 +12,7 @@ import { incrementPomodoroGlobal, ensurePomodoroState } from './pomodoro-queue.j
 import { schedulePomodoroPersist, flushPomodoroPersist } from './pomodoro-session.js';
 import { playPomodoroSound } from './pomodoro-sounds.js';
 import { showAppNotification } from './app-notify.js';
+import { resolveRestoredTimer } from './pomodoro-restore.js';
 
 /** @type {'idle'|'work'|'shortBreak'|'longBreak'} */
 let phase = 'idle';
@@ -36,7 +37,8 @@ function exportSession() {
     phase,
     taskId: taskId || null,
     endsAt: endsAt ?? null,
-    pausedRemainingMs: pausedRemainingMs ?? null
+    pausedRemainingMs: pausedRemainingMs ?? null,
+    savedAt: Date.now()
   };
 }
 
@@ -85,20 +87,21 @@ export function restorePomodoroSession(session, opts = {}) {
     return;
   }
   const now = Date.now();
-  if (session.pausedRemainingMs != null && session.pausedRemainingMs > 0) {
+  const restored = resolveRestoredTimer(session, now);
+  if (restored.mode === 'paused') {
     phase = session.phase;
     taskId = session.taskId || null;
-    pausedRemainingMs = session.pausedRemainingMs;
+    pausedRemainingMs = restored.remainingMs;
     endsAt = null;
     ensureTick();
     emit();
     refreshBoardPomodoroUi();
     return;
   }
-  if (session.endsAt && session.endsAt > now) {
+  if (restored.mode === 'running') {
     phase = session.phase;
     taskId = session.taskId || null;
-    endsAt = session.endsAt;
+    endsAt = restored.endsAt;
     pausedRemainingMs = null;
     ensureTick();
     emit();
@@ -107,7 +110,7 @@ export function restorePomodoroSession(session, opts = {}) {
   }
   phase = session.phase;
   taskId = session.taskId || null;
-  endsAt = session.endsAt || now;
+  endsAt = restored.endsAt;
   pausedRemainingMs = null;
   if (phase === 'work') completeWorkSession();
   else if (phase === 'shortBreak' || phase === 'longBreak') completeBreakSession();
